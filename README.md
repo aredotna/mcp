@@ -1,4 +1,4 @@
-# Are.na MCP Server
+# @aredotna/mcp
 
 MCP server for the [Are.na](https://www.are.na) API. Provides 30+ auto-generated tools from the OpenAPI spec plus custom composite tools.
 

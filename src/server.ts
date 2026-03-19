@@ -4,7 +4,7 @@ import { registerCustomTools } from "./tools/index";
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
-    name: "arena-mcp-server",
+    name: "@aredotna/mcp",
     version: "0.1.0",
   });
 

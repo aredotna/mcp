@@ -12,6 +12,16 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", cors());
 
+app.get("/", (c) => {
+  return c.json({
+    name: "@aredotna/mcp",
+    version: "0.1.0",
+    transport: "streamable-http",
+    endpoint: "/mcp",
+    docs: "https://github.com/aredotna/mcp",
+  });
+});
+
 function extractBearerToken(request: Request): string | undefined {
   const header = request.headers.get("Authorization");
   if (!header?.startsWith("Bearer ")) return undefined;
