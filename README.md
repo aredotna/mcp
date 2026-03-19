@@ -16,7 +16,7 @@ yarn generate   # fetch spec, generate types + tools
 
 ## Authentication
 
-All requests require an Are.na personal access token. Get one from [are.na/settings/personal-access-tokens](https://www.are.na/settings/personal-access-tokens).
+All requests require an Are.na personal access token. Get one from [are.na/developers/personal-access-tokens](https://www.are.na/developers/personal-access-tokens).
 
 - **stdio**: set the `ARENA_ACCESS_TOKEN` environment variable.
 - **HTTP**: send an `Authorization: Bearer <token>` header with each request. Alternatively, set `ARENA_ACCESS_TOKEN` as an environment variable / Cloudflare secret for a single-user deployment.
