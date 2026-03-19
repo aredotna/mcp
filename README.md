@@ -2,66 +2,138 @@
 
 MCP server for the [Are.na](https://www.are.na) API. Provides 30+ auto-generated tools from the OpenAPI spec plus custom composite tools.
 
-## Transports
+## Quick start
 
-- **Streamable HTTP** -- deployed to Cloudflare Workers, authenticated via personal access token
-- **stdio** -- local development, single-user via personal access token
+The hosted server is available at `https://mcp.are.na/mcp`.
 
-## Setup
+You'll need an Are.na personal access token — get one from [are.na/settings/personal-access-tokens](https://www.are.na/settings/personal-access-tokens).
 
-```bash
-yarn install
-yarn generate   # fetch spec, generate types + tools
+### Claude Desktop (remote)
+
+If your version of Claude Desktop supports the `url` format:
+
+```json
+{
+  "mcpServers": {
+    "arena": {
+      "url": "https://mcp.are.na/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_ARENA_TOKEN"
+      }
+    }
+  }
+}
 ```
 
-## Authentication
+If your version only supports `command` (stdio), you can use [mcp-proxy](https://github.com/sparfenyuk/mcp-proxy) to bridge to the remote server. Install [uv](https://docs.astral.sh/uv/) first (`brew install uv`), then:
 
-All requests require an Are.na personal access token. Get one from [are.na/developers/personal-access-tokens](https://www.are.na/developers/personal-access-tokens).
+```json
+{
+  "mcpServers": {
+    "arena": {
+      "command": "/opt/homebrew/bin/uvx",
+      "args": [
+        "mcp-proxy",
+        "--transport",
+        "streamablehttp",
+        "-H",
+        "Authorization",
+        "Bearer YOUR_ARENA_TOKEN",
+        "https://mcp.are.na/mcp"
+      ]
+    }
+  }
+}
+```
 
-- **stdio**: set the `ARENA_ACCESS_TOKEN` environment variable.
-- **HTTP**: send an `Authorization: Bearer <token>` header with each request. Alternatively, set `ARENA_ACCESS_TOKEN` as an environment variable / Cloudflare secret for a single-user deployment.
+> **Note:** Use the full path to `uvx` (e.g. `/opt/homebrew/bin/uvx`). Claude Desktop may not have `uvx` on its `PATH`.
 
-### Local development (stdio)
+### Claude Desktop (local)
+
+To run the server locally via stdio, clone the repo, run `yarn install && yarn generate`, then use absolute paths in your config:
+
+```json
+{
+  "mcpServers": {
+    "arena": {
+      "command": "/path/to/arena/mcp/node_modules/.bin/tsx",
+      "args": ["/path/to/arena/mcp/src/transports/stdio.ts"],
+      "env": {
+        "ARENA_ACCESS_TOKEN": "YOUR_ARENA_TOKEN"
+      }
+    }
+  }
+}
+```
+
+> **Note:** You must use absolute paths for both `command` and `args`. Claude Desktop does not reliably resolve relative paths or respect `cwd`. Using `yarn dev` or bare `npx tsx` will not work — `yarn` writes to stdout, and `npx` without a cwd cannot find the script.
+
+### Cursor
+
+Add the server under **Settings > MCP Servers** with URL `https://mcp.are.na/mcp` and an `Authorization: Bearer YOUR_ARENA_TOKEN` header.
+
+## Development
+
+```bash
+git clone https://github.com/aredotna/mcp.git
+cd mcp
+yarn install
+yarn generate   # fetch OpenAPI spec, generate types + tools
+```
+
+### Running locally
+
+**stdio** — single-user, for use with Claude Desktop or other MCP clients:
 
 ```bash
 ARENA_ACCESS_TOKEN=your-token yarn dev
 ```
 
-### Local development (HTTP)
-
-Create `.dev.vars` from the example:
+**HTTP** — runs a local Cloudflare Workers dev server:
 
 ```bash
 cp .dev.vars.example .dev.vars
-# Set your personal access token
-```
-
-```bash
+# Set your personal access token in .dev.vars
 yarn dev:http
 ```
 
-### Deploy to Cloudflare Workers
+### Testing
 
 ```bash
-# Set access token secret
-wrangler secret put ARENA_ACCESS_TOKEN
+yarn typecheck
+yarn test
+```
 
-# Deploy
+### Formatting
+
+```bash
+yarn format
+```
+
+Prettier runs automatically on staged files via a pre-commit hook.
+
+## Deployment
+
+Pushes to `main` are automatically deployed to Cloudflare Workers via GitHub Actions.
+
+To deploy manually:
+
+```bash
 yarn deploy
 ```
 
-For multi-user deployments, omit the `ARENA_ACCESS_TOKEN` secret and have each client send its own Bearer token.
+Requires `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (set as GitHub repo secrets for CI, or via `wrangler login` locally).
 
 ## Adding custom tools
 
-Create a file in `src/tools/custom/`, export a `register(server)` function, and add it to `src/tools/index.ts`. See `src/tools/custom/search-and-connect.ts` for an example.
+Create a file in `src/tools/custom/`, export a register function, and add it to `src/tools/index.ts`. See `src/tools/custom/search-and-connect.ts` for an example.
 
 ## Regenerating tools
 
-When the API spec changes:
+When the Are.na API spec changes:
 
 ```bash
 yarn generate
 ```
 
-This fetches the latest spec, regenerates TypeScript types and tool registrations.
+This fetches the latest spec and regenerates TypeScript types and tool registrations.

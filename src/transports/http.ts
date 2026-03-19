@@ -18,6 +18,7 @@ app.get("/", (c) => {
     version: "0.1.0",
     transport: "streamable-http",
     endpoint: "/mcp",
+    url: "https://mcp.are.na/mcp",
     docs: "https://github.com/aredotna/mcp",
   });
 });
