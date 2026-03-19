@@ -13,7 +13,6 @@ const CONNECTABLE_TYPES = new Set([
   "Attachment",
   "Embed",
   "Channel",
-  "Block",
 ]);
 
 export function registerSearchAndConnect(server: McpServer): void {

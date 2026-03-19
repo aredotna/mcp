@@ -7,7 +7,7 @@ export function registerGeneratedTools(server: McpServer): void {
 
   server.tool(
     "presignUpload",
-    "Get a presigned upload URL — Returns presigned S3 PUT URLs for direct file upload. Use this to upload",
+    "Get a presigned upload URL — Returns presigned S3 PUT URLs for direct file upload.",
     {
     "files": z.array(z.object({ "filename": z.string().describe("Name of the file to upload"), "content_type": z.string().describe("MIME type of the file") })).min(1).max(50).describe("Array of files to generate presigned URLs for")
   },
@@ -48,7 +48,7 @@ export function registerGeneratedTools(server: McpServer): void {
 
   server.tool(
     "batchCreateBlocks",
-    "Batch create blocks — Queues multiple blocks for asynchronous creation and connects them to one",
+    "Batch create blocks — Queues multiple blocks for asynchronous creation and connects them to one or more channels.",
     {
     "channel_ids": z.array(z.union([z.number().int(), z.string()])).min(1).max(20),
     "blocks": z.array(z.object({ "value": z.string().describe("The content to create a block from. Can be either:\n- A URL (creates Image, Link, or Embed block based on content type)\n- Text/markdown content (creates a Text block)\n"), "title": z.string().optional().describe("Optional title for the block"), "description": z.string().optional().describe("Optional description (supports markdown)"), "original_source_url": z.string().optional().describe("Original source URL for attribution"), "original_source_title": z.string().optional().describe("Title of the original source"), "alt_text": z.string().optional().describe("Alt text for images (accessibility)") })).min(1).max(50).describe("Array of blocks to create")
@@ -85,7 +85,7 @@ export function registerGeneratedTools(server: McpServer): void {
 
   server.tool(
     "getBlock",
-    "Get a block — Returns detailed information about a specific block by its ID. Respects visibility rules and user permissions.",
+    "Get a block — Returns detailed information about a specific block by its ID.",
     {
     "id": z.number().int().describe("Resource ID")
   },
@@ -104,7 +104,7 @@ export function registerGeneratedTools(server: McpServer): void {
 
   server.tool(
     "updateBlock",
-    "Update a block — Updates a block's metadata. Only the block owner can update it.",
+    "Update a block — Updates a block's metadata.",
     {
     "id": z.number().int().describe("Resource ID"),
     "title": z.string().optional().describe("Block title"),
@@ -196,7 +196,7 @@ export function registerGeneratedTools(server: McpServer): void {
 
   server.tool(
     "deleteComment",
-    "Delete a comment — Deletes a comment. Only the comment author can delete their comments.",
+    "Delete a comment — Deletes a comment.",
     {
     "id": z.number().int().describe("Resource ID")
   },
@@ -235,7 +235,7 @@ export function registerGeneratedTools(server: McpServer): void {
 
   server.tool(
     "getChannel",
-    "Get a channel — Returns detailed information about a specific channel by its ID or slug. Respects visibility rules and user permissions.",
+    "Get a channel — Returns detailed information about a specific channel by its ID or slug.",
     {
     "id": z.string().describe("Resource ID or slug")
   },
@@ -254,7 +254,7 @@ export function registerGeneratedTools(server: McpServer): void {
 
   server.tool(
     "updateChannel",
-    "Update a channel — Updates an existing channel. Only provided fields are updated.",
+    "Update a channel — Updates an existing channel.",
     {
     "id": z.string().describe("Resource ID or slug"),
     "title": z.string().optional().describe("Channel title"),
@@ -277,7 +277,7 @@ export function registerGeneratedTools(server: McpServer): void {
 
   server.tool(
     "deleteChannel",
-    "Delete a channel — Deletes a channel. This can not be undone.",
+    "Delete a channel — Deletes a channel.",
     {
     "id": z.string().describe("Resource ID or slug")
   },
@@ -316,7 +316,7 @@ export function registerGeneratedTools(server: McpServer): void {
 
   server.tool(
     "getConnection",
-    "Get connection details — Returns detailed information about a connection,",
+    "Get connection details — Returns detailed information about a connection, including abilities (whether the current user can remove the connection).",
     {
     "id": z.number().int().describe("Resource ID")
   },
@@ -459,7 +459,7 @@ export function registerGeneratedTools(server: McpServer): void {
 
   server.tool(
     "getUser",
-    "Get a user — Returns detailed information about a specific user by their slug. Includes user profile, bio, and counts.",
+    "Get a user — Returns detailed information about a specific user by their slug.",
     {
     "id": z.string().describe("Resource ID or slug")
   },
@@ -549,7 +549,7 @@ export function registerGeneratedTools(server: McpServer): void {
 
   server.tool(
     "getGroup",
-    "Get a group — Returns detailed information about a specific group by its slug. Includes group profile, bio, owner, and counts.",
+    "Get a group — Returns detailed information about a specific group by its slug.",
     {
     "id": z.string().describe("Resource ID or slug")
   },

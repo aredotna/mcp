@@ -40,6 +40,13 @@ type HttpMethod = "get" | "post" | "put" | "delete" | "patch";
 
 const HTTP_METHODS: HttpMethod[] = ["get", "post", "put", "delete", "patch"];
 
+function firstSentence(text?: string): string {
+  if (!text) return "";
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  const match = collapsed.match(/^(.+?\.)\s/);
+  return match ? match[1] : collapsed;
+}
+
 function resolveRef(ref: string, spec: Record<string, unknown>): unknown {
   const parts = ref.replace("#/", "").split("/");
   let current: unknown = spec;
@@ -196,7 +203,7 @@ function buildToolDef(
     method: method.toUpperCase(),
     path,
     summary: op.summary ?? op.operationId,
-    description: op.description?.split("\n")[0] ?? "",
+    description: firstSentence(op.description),
     zodFields,
     pathParams,
     queryParams,

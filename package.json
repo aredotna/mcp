@@ -10,7 +10,7 @@
     "dev:http": "wrangler dev src/transports/http.ts",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --exclude 'dist/**'"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.0",
