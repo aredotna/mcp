@@ -1,10 +1,21 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createArenaClient } from "../../client";
+import {
+  withArenaClient,
+  textResult,
+  errorResult,
+} from "../../lib/tool-helpers";
 
-/**
- * Composite tool: searches Are.na and connects matching results to a channel.
- */
+const CONNECTABLE_TYPES = new Set([
+  "Text",
+  "Image",
+  "Link",
+  "Attachment",
+  "Embed",
+  "Channel",
+  "Block",
+]);
+
 export function registerSearchAndConnect(server: McpServer): void {
   server.tool(
     "searchAndConnect",
@@ -36,77 +47,71 @@ export function registerSearchAndConnect(server: McpServer): void {
         .describe("Maximum number of results to connect (default 5)"),
     },
     async (args, extra) => {
-      const token = extra.authInfo?.token;
-      if (!token) {
-        return {
-          content: [{ type: "text" as const, text: "Authentication required" }],
-        };
-      }
+      return withArenaClient(extra, async (client) => {
+        const maxResults = args.max_results ?? 5;
 
-      const client = createArenaClient(token);
-      const maxResults = (args.max_results as number | undefined) ?? 5;
-
-      const { data: searchData, error: searchError } = await client.GET(
-        "/v3/search",
-        {
-          params: {
-            query: {
-              query: args.query,
-              ...(args.type ? { type: [args.type] } : {}),
-              per: maxResults,
-            },
-          },
-        },
-      );
-
-      if (searchError) {
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify(searchError) },
-          ],
-        };
-      }
-
-      const items = (searchData as { data?: Array<{ id: number; type?: string }> })?.data ?? [];
-      const connected: Array<{ id: number; type: string }> = [];
-      const errors: string[] = [];
-
-      for (const item of items) {
-        const connectableType =
-          item.type === "Channel" ? "Channel" : "Block";
-
-        const { error: connectError } = await client.POST(
-          "/v3/connections",
+        const { data: searchData, error: searchError } = await client.GET(
+          "/v3/search",
           {
-            body: {
-              connectable_id: item.id,
-              connectable_type: connectableType as "Block" | "Channel",
-              channel_ids: [args.target_channel_id],
+            params: {
+              query: {
+                query: args.query,
+                ...(args.type ? { type: [args.type] } : {}),
+                per: maxResults,
+              },
             },
           },
         );
 
-        if (connectError) {
-          errors.push(
-            `Failed to connect ${connectableType} ${item.id}: ${JSON.stringify(connectError)}`,
+        if (searchError) return errorResult(searchError);
+
+        const items =
+          (searchData as { data?: Array<{ id: number; class?: string }> })
+            ?.data ?? [];
+
+        const connected: Array<{ id: number; type: string }> = [];
+        const skipped: Array<{ id: number; class?: string }> = [];
+        const errors: string[] = [];
+
+        for (const item of items) {
+          if (!item.class || !CONNECTABLE_TYPES.has(item.class)) {
+            skipped.push({ id: item.id, class: item.class });
+            continue;
+          }
+
+          const connectableType =
+            item.class === "Channel" ? "Channel" : "Block";
+
+          const { error: connectError } = await client.POST(
+            "/v3/connections",
+            {
+              body: {
+                connectable_id: item.id,
+                connectable_type: connectableType as "Block" | "Channel",
+                channel_ids: [args.target_channel_id],
+              },
+            },
           );
-        } else {
-          connected.push({ id: item.id, type: connectableType });
+
+          if (connectError) {
+            errors.push(
+              `Failed to connect ${connectableType} ${item.id}: ${JSON.stringify(connectError)}`,
+            );
+          } else {
+            connected.push({ id: item.id, type: connectableType });
+          }
         }
-      }
 
-      const summary = {
-        query: args.query,
-        target_channel: args.target_channel_id,
-        found: items.length,
-        connected: connected.length,
-        errors: errors.length > 0 ? errors : undefined,
-        items: connected,
-      };
-
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }],
-      };
+        return textResult({
+          query: args.query,
+          target_channel: args.target_channel_id,
+          found: items.length,
+          connected: connected.length,
+          skipped: skipped.length > 0 ? skipped : undefined,
+          errors: errors.length > 0 ? errors : undefined,
+          items: connected,
+        });
+      }).catch((err) => errorResult(err.message));
     },
   );
 }

@@ -4,8 +4,8 @@ MCP server for the [Are.na](https://www.are.na) API. Provides 30+ auto-generated
 
 ## Transports
 
-- **Streamable HTTP** — deployed to Cloudflare Workers, multi-tenant via OAuth
-- **stdio** — local development, single-user via personal access token
+- **Streamable HTTP** -- deployed to Cloudflare Workers, authenticated via personal access token
+- **stdio** -- local development, single-user via personal access token
 
 ## Setup
 
@@ -13,6 +13,13 @@ MCP server for the [Are.na](https://www.are.na) API. Provides 30+ auto-generated
 yarn install
 yarn generate   # fetch spec, generate types + tools
 ```
+
+## Authentication
+
+All requests require an Are.na personal access token. Get one from [are.na/settings/personal-access-tokens](https://www.are.na/settings/personal-access-tokens).
+
+- **stdio**: set the `ARENA_ACCESS_TOKEN` environment variable.
+- **HTTP**: send an `Authorization: Bearer <token>` header with each request. Alternatively, set `ARENA_ACCESS_TOKEN` as an environment variable / Cloudflare secret for a single-user deployment.
 
 ### Local development (stdio)
 
@@ -26,7 +33,7 @@ Create `.dev.vars` from the example:
 
 ```bash
 cp .dev.vars.example .dev.vars
-# Edit with your OAuth app credentials
+# Set your personal access token
 ```
 
 ```bash
@@ -36,25 +43,14 @@ yarn dev:http
 ### Deploy to Cloudflare Workers
 
 ```bash
-# Create the KV namespace
-wrangler kv namespace create OAUTH_CLIENTS
-# Update wrangler.toml with the returned ID
-
-# Set secrets
-wrangler secret put ARENA_OAUTH_CLIENT_ID
-wrangler secret put ARENA_OAUTH_CLIENT_SECRET
+# Set access token secret
+wrangler secret put ARENA_ACCESS_TOKEN
 
 # Deploy
 yarn deploy
 ```
 
-## Authentication
-
-The deployed server supports two authentication methods:
-
-1. **OAuth2** — MCP clients automatically discover the server's OAuth endpoints and walk the user through Are.na authorization. Requires an OAuth app registered at [are.na/oauth/applications](https://www.are.na/oauth/applications).
-
-2. **Personal access token** — configure a Bearer token directly in your MCP client. Get one from [are.na/settings/personal-access-tokens](https://www.are.na/settings/personal-access-tokens).
+For multi-user deployments, omit the `ARENA_ACCESS_TOKEN` secret and have each client send its own Bearer token.
 
 ## Adding custom tools
 
