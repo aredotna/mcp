@@ -1,0 +1,13 @@
+name = "arena-mcp-server"
+main = "src/transports/http.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# Create with: wrangler kv namespace create OAUTH_CLIENTS
+[[kv_namespaces]]
+binding = "OAUTH_CLIENTS"
+id = "PLACEHOLDER"
+preview_id = "PLACEHOLDER"
