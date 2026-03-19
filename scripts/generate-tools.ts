@@ -297,10 +297,12 @@ function main() {
     const desc = tool.summary + (tool.description ? ` — ${tool.description}` : "");
 
     lines.push(``);
-    lines.push(`  server.tool(`);
+    lines.push(`  server.registerTool(`);
     lines.push(`    ${JSON.stringify(tool.operationId)},`);
-    lines.push(`    ${JSON.stringify(desc)},`);
-    lines.push(`    ${schemaInner},`);
+    lines.push(`    {`);
+    lines.push(`      description: ${JSON.stringify(desc)},`);
+    lines.push(`      inputSchema: ${schemaInner},`);
+    lines.push(`    },`);
     lines.push(generateHandler(tool));
     lines.push(`  );`);
   }

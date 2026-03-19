@@ -16,34 +16,37 @@ const CONNECTABLE_TYPES = new Set([
 ]);
 
 export function registerSearchAndConnect(server: McpServer): void {
-  server.tool(
+  server.registerTool(
     "searchAndConnect",
-    "Search Are.na and connect matching results to a target channel",
     {
-      query: z.string().describe("Search query"),
-      target_channel_id: z
-        .string()
-        .describe("Channel ID or slug to connect results to"),
-      type: z
-        .enum([
-          "All",
-          "Text",
-          "Image",
-          "Link",
-          "Attachment",
-          "Embed",
-          "Channel",
-          "Block",
-        ])
-        .optional()
-        .describe("Filter by content type"),
-      max_results: z
-        .number()
-        .int()
-        .min(1)
-        .max(20)
-        .optional()
-        .describe("Maximum number of results to connect (default 5)"),
+      description:
+        "Search Are.na and connect matching results to a target channel",
+      inputSchema: {
+        query: z.string().describe("Search query"),
+        target_channel_id: z
+          .string()
+          .describe("Channel ID or slug to connect results to"),
+        type: z
+          .enum([
+            "All",
+            "Text",
+            "Image",
+            "Link",
+            "Attachment",
+            "Embed",
+            "Channel",
+            "Block",
+          ])
+          .optional()
+          .describe("Filter by content type"),
+        max_results: z
+          .number()
+          .int()
+          .min(1)
+          .max(20)
+          .optional()
+          .describe("Maximum number of results to connect (default 5)"),
+      },
     },
     async (args, extra) => {
       return withArenaClient(extra, async (client) => {
@@ -81,16 +84,13 @@ export function registerSearchAndConnect(server: McpServer): void {
           const connectableType =
             item.class === "Channel" ? "Channel" : "Block";
 
-          const { error: connectError } = await client.POST(
-            "/v3/connections",
-            {
-              body: {
-                connectable_id: item.id,
-                connectable_type: connectableType as "Block" | "Channel",
-                channel_ids: [args.target_channel_id],
-              },
+          const { error: connectError } = await client.POST("/v3/connections", {
+            body: {
+              connectable_id: item.id,
+              connectable_type: connectableType as "Block" | "Channel",
+              channel_ids: [args.target_channel_id],
             },
-          );
+          });
 
           if (connectError) {
             errors.push(

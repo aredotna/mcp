@@ -4,642 +4,1242 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { withArenaClient, textResult, errorResult } from "../lib/tool-helpers";
 
 export function registerGeneratedTools(server: McpServer): void {
-
-  server.tool(
+  server.registerTool(
     "presignUpload",
-    "Get a presigned upload URL — Returns presigned S3 PUT URLs for direct file upload.",
     {
-    "files": z.array(z.object({ "filename": z.string().describe("Name of the file to upload"), "content_type": z.string().describe("MIME type of the file") })).min(1).max(50).describe("Array of files to generate presigned URLs for")
-  },
+      description:
+        "Get a presigned upload URL — Returns presigned S3 PUT URLs for direct file upload.",
+      inputSchema: {
+        files: z
+          .array(
+            z.object({
+              filename: z.string().describe("Name of the file to upload"),
+              content_type: z.string().describe("MIME type of the file"),
+            }),
+          )
+          .min(1)
+          .max(50)
+          .describe("Array of files to generate presigned URLs for"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.POST("/v3/uploads/presign", {
-      body: { "files": args["files"] }
-    } as any);
+          body: { files: args["files"] },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "createBlock",
-    "Create a block — Creates a new block and connects it to one or more channels.",
     {
-    "value": z.string().describe("The content to create a block from. Can be either:\n- A URL (creates Image, Link, or Embed block based on content type)\n- Text/markdown content (creates a Text block)\n"),
-    "title": z.string().optional().describe("Optional title for the block"),
-    "description": z.string().optional().describe("Optional description (supports markdown)"),
-    "original_source_url": z.string().optional().describe("Original source URL for attribution"),
-    "original_source_title": z.string().optional().describe("Title of the original source"),
-    "alt_text": z.string().optional().describe("Alt text for images (accessibility)"),
-    "channel_ids": z.array(z.union([z.number().int(), z.string()])).min(1).max(20),
-    "insert_at": z.number().int().optional().describe("Position to insert the block in the channel.\nOnly valid when connecting to a single channel.\n")
-  },
+      description:
+        "Create a block — Creates a new block and connects it to one or more channels.",
+      inputSchema: {
+        value: z
+          .string()
+          .describe(
+            "The content to create a block from. Can be either:\n- A URL (creates Image, Link, or Embed block based on content type)\n- Text/markdown content (creates a Text block)\n",
+          ),
+        title: z.string().optional().describe("Optional title for the block"),
+        description: z
+          .string()
+          .optional()
+          .describe("Optional description (supports markdown)"),
+        original_source_url: z
+          .string()
+          .optional()
+          .describe("Original source URL for attribution"),
+        original_source_title: z
+          .string()
+          .optional()
+          .describe("Title of the original source"),
+        alt_text: z
+          .string()
+          .optional()
+          .describe("Alt text for images (accessibility)"),
+        channel_ids: z
+          .array(z.union([z.number().int(), z.string()]))
+          .min(1)
+          .max(20),
+        insert_at: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            "Position to insert the block in the channel.\nOnly valid when connecting to a single channel.\n",
+          ),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.POST("/v3/blocks", {
-      body: { "value": args["value"], "title": args["title"], "description": args["description"], "original_source_url": args["original_source_url"], "original_source_title": args["original_source_title"], "alt_text": args["alt_text"], "channel_ids": args["channel_ids"], "insert_at": args["insert_at"] }
-    } as any);
+          body: {
+            value: args["value"],
+            title: args["title"],
+            description: args["description"],
+            original_source_url: args["original_source_url"],
+            original_source_title: args["original_source_title"],
+            alt_text: args["alt_text"],
+            channel_ids: args["channel_ids"],
+            insert_at: args["insert_at"],
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "batchCreateBlocks",
-    "Batch create blocks — Queues multiple blocks for asynchronous creation and connects them to one or more channels.",
     {
-    "channel_ids": z.array(z.union([z.number().int(), z.string()])).min(1).max(20),
-    "blocks": z.array(z.object({ "value": z.string().describe("The content to create a block from. Can be either:\n- A URL (creates Image, Link, or Embed block based on content type)\n- Text/markdown content (creates a Text block)\n"), "title": z.string().optional().describe("Optional title for the block"), "description": z.string().optional().describe("Optional description (supports markdown)"), "original_source_url": z.string().optional().describe("Original source URL for attribution"), "original_source_title": z.string().optional().describe("Title of the original source"), "alt_text": z.string().optional().describe("Alt text for images (accessibility)") })).min(1).max(50).describe("Array of blocks to create")
-  },
+      description:
+        "Batch create blocks — Queues multiple blocks for asynchronous creation and connects them to one or more channels.",
+      inputSchema: {
+        channel_ids: z
+          .array(z.union([z.number().int(), z.string()]))
+          .min(1)
+          .max(20),
+        blocks: z
+          .array(
+            z.object({
+              value: z
+                .string()
+                .describe(
+                  "The content to create a block from. Can be either:\n- A URL (creates Image, Link, or Embed block based on content type)\n- Text/markdown content (creates a Text block)\n",
+                ),
+              title: z
+                .string()
+                .optional()
+                .describe("Optional title for the block"),
+              description: z
+                .string()
+                .optional()
+                .describe("Optional description (supports markdown)"),
+              original_source_url: z
+                .string()
+                .optional()
+                .describe("Original source URL for attribution"),
+              original_source_title: z
+                .string()
+                .optional()
+                .describe("Title of the original source"),
+              alt_text: z
+                .string()
+                .optional()
+                .describe("Alt text for images (accessibility)"),
+            }),
+          )
+          .min(1)
+          .max(50)
+          .describe("Array of blocks to create"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.POST("/v3/blocks/batch", {
-      body: { "channel_ids": args["channel_ids"], "blocks": args["blocks"] }
-    } as any);
+          body: { channel_ids: args["channel_ids"], blocks: args["blocks"] },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getBatchStatus",
-    "Get batch status — Returns the current status of a batch block creation job.",
     {
-    "batch_id": z.string().describe("The batch ID returned from the batch create endpoint")
-  },
+      description:
+        "Get batch status — Returns the current status of a batch block creation job.",
+      inputSchema: {
+        batch_id: z
+          .string()
+          .describe("The batch ID returned from the batch create endpoint"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
-        const { data, error } = await client.GET("/v3/blocks/batch/{batch_id}", {
-      params: {
-        path: { batch_id: args["batch_id"] }
-      }
-    } as any);
+        const { data, error } = await client.GET(
+          "/v3/blocks/batch/{batch_id}",
+          {
+            params: {
+              path: { batch_id: args["batch_id"] },
+            },
+          } as any,
+        );
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getBlock",
-    "Get a block — Returns detailed information about a specific block by its ID.",
     {
-    "id": z.number().int().describe("Resource ID")
-  },
+      description:
+        "Get a block — Returns detailed information about a specific block by its ID.",
+      inputSchema: {
+        id: z.number().int().describe("Resource ID"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/blocks/{id}", {
-      params: {
-        path: { id: args["id"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "updateBlock",
-    "Update a block — Updates a block's metadata.",
     {
-    "id": z.number().int().describe("Resource ID"),
-    "title": z.string().optional().describe("Block title"),
-    "description": z.string().optional().describe("Block description (supports markdown)"),
-    "content": z.string().optional().describe("Text content (for Text blocks only, supports markdown)"),
-    "alt_text": z.string().optional().describe("Alt text for images (for Image blocks)")
-  },
+      description: "Update a block — Updates a block's metadata.",
+      inputSchema: {
+        id: z.number().int().describe("Resource ID"),
+        title: z.string().optional().describe("Block title"),
+        description: z
+          .string()
+          .optional()
+          .describe("Block description (supports markdown)"),
+        content: z
+          .string()
+          .optional()
+          .describe("Text content (for Text blocks only, supports markdown)"),
+        alt_text: z
+          .string()
+          .optional()
+          .describe("Alt text for images (for Image blocks)"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.PUT("/v3/blocks/{id}", {
-      params: {
-        path: { id: args["id"] }
-      },
-      body: { "title": args["title"], "description": args["description"], "content": args["content"], "alt_text": args["alt_text"] }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+          body: {
+            title: args["title"],
+            description: args["description"],
+            content: args["content"],
+            alt_text: args["alt_text"],
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getBlockConnections",
-    "Get block connections — Returns paginated list of channels where this block appears.",
     {
-    "id": z.number().int().describe("Resource ID"),
-    "page": z.number().int().optional().describe("Page number for pagination"),
-    "per": z.number().int().optional().describe("Number of items per page (max 100)"),
-    "sort": z.enum(["created_at_desc", "created_at_asc"]).optional().describe("Sort by the date the relationship was created."),
-    "filter": z.enum(["ALL", "OWN", "EXCLUDE_OWN"]).optional().describe("Filter connections by ownership.")
-  },
+      description:
+        "Get block connections — Returns paginated list of channels where this block appears.",
+      inputSchema: {
+        id: z.number().int().describe("Resource ID"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+        sort: z
+          .enum(["created_at_desc", "created_at_asc"])
+          .optional()
+          .describe("Sort by the date the relationship was created."),
+        filter: z
+          .enum(["ALL", "OWN", "EXCLUDE_OWN"])
+          .optional()
+          .describe("Filter connections by ownership."),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
-        const { data, error } = await client.GET("/v3/blocks/{id}/connections", {
-      params: {
-        path: { id: args["id"] },
-        query: { page: args["page"], per: args["per"], sort: args["sort"], filter: args["filter"] }
-      }
-    } as any);
+        const { data, error } = await client.GET(
+          "/v3/blocks/{id}/connections",
+          {
+            params: {
+              path: { id: args["id"] },
+              query: {
+                page: args["page"],
+                per: args["per"],
+                sort: args["sort"],
+                filter: args["filter"],
+              },
+            },
+          } as any,
+        );
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getBlockComments",
-    "Get block comments — Returns paginated list of comments on this block.",
     {
-    "id": z.number().int().describe("Resource ID"),
-    "page": z.number().int().optional().describe("Page number for pagination"),
-    "per": z.number().int().optional().describe("Number of items per page (max 100)"),
-    "sort": z.enum(["created_at_desc", "created_at_asc"]).optional().describe("Sort by the date the relationship was created.")
-  },
+      description:
+        "Get block comments — Returns paginated list of comments on this block.",
+      inputSchema: {
+        id: z.number().int().describe("Resource ID"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+        sort: z
+          .enum(["created_at_desc", "created_at_asc"])
+          .optional()
+          .describe("Sort by the date the relationship was created."),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/blocks/{id}/comments", {
-      params: {
-        path: { id: args["id"] },
-        query: { page: args["page"], per: args["per"], sort: args["sort"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+            query: { page: args["page"], per: args["per"], sort: args["sort"] },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "createBlockComment",
-    "Create a comment — Creates a new comment on a block.",
     {
-    "id": z.number().int().describe("Resource ID"),
-    "body": z.string().describe("Comment body (supports @mentions)")
-  },
+      description: "Create a comment — Creates a new comment on a block.",
+      inputSchema: {
+        id: z.number().int().describe("Resource ID"),
+        body: z.string().describe("Comment body (supports @mentions)"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.POST("/v3/blocks/{id}/comments", {
-      params: {
-        path: { id: args["id"] }
-      },
-      body: { "body": args["body"] }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+          body: { body: args["body"] },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "deleteComment",
-    "Delete a comment — Deletes a comment.",
     {
-    "id": z.number().int().describe("Resource ID")
-  },
+      description: "Delete a comment — Deletes a comment.",
+      inputSchema: {
+        id: z.number().int().describe("Resource ID"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.DELETE("/v3/comments/{id}", {
-      params: {
-        path: { id: args["id"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "createChannel",
-    "Create a channel — Creates a new channel owned by the authenticated user or a group they belong to.",
     {
-    "title": z.string().describe("Channel title"),
-    "visibility": z.enum(["public", "private", "closed"]).optional(),
-    "description": z.string().optional().describe("Channel description (supports markdown)"),
-    "group_id": z.number().int().optional().describe("Group ID to create the channel under. The authenticated user must be a member of the group.\nIf not provided, the channel is owned by the authenticated user.\n")
-  },
+      description:
+        "Create a channel — Creates a new channel owned by the authenticated user or a group they belong to.",
+      inputSchema: {
+        title: z.string().describe("Channel title"),
+        visibility: z.enum(["public", "private", "closed"]).optional(),
+        description: z
+          .string()
+          .optional()
+          .describe("Channel description (supports markdown)"),
+        group_id: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            "Group ID to create the channel under. The authenticated user must be a member of the group.\nIf not provided, the channel is owned by the authenticated user.\n",
+          ),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.POST("/v3/channels", {
-      body: { "title": args["title"], "visibility": args["visibility"], "description": args["description"], "group_id": args["group_id"] }
-    } as any);
+          body: {
+            title: args["title"],
+            visibility: args["visibility"],
+            description: args["description"],
+            group_id: args["group_id"],
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getChannel",
-    "Get a channel — Returns detailed information about a specific channel by its ID or slug.",
     {
-    "id": z.string().describe("Resource ID or slug")
-  },
+      description:
+        "Get a channel — Returns detailed information about a specific channel by its ID or slug.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/channels/{id}", {
-      params: {
-        path: { id: args["id"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "updateChannel",
-    "Update a channel — Updates an existing channel.",
     {
-    "id": z.string().describe("Resource ID or slug"),
-    "title": z.string().optional().describe("Channel title"),
-    "visibility": z.enum(["public", "private", "closed"]).optional(),
-    "description": z.string().nullable().optional().describe("Channel description (supports markdown). Pass null to clear.")
-  },
+      description: "Update a channel — Updates an existing channel.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        title: z.string().optional().describe("Channel title"),
+        visibility: z.enum(["public", "private", "closed"]).optional(),
+        description: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(
+            "Channel description (supports markdown). Pass null to clear.",
+          ),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.PUT("/v3/channels/{id}", {
-      params: {
-        path: { id: args["id"] }
-      },
-      body: { "title": args["title"], "visibility": args["visibility"], "description": args["description"] }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+          body: {
+            title: args["title"],
+            visibility: args["visibility"],
+            description: args["description"],
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "deleteChannel",
-    "Delete a channel — Deletes a channel.",
     {
-    "id": z.string().describe("Resource ID or slug")
-  },
+      description: "Delete a channel — Deletes a channel.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.DELETE("/v3/channels/{id}", {
-      params: {
-        path: { id: args["id"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "createConnection",
-    "Create a connection — Connects a block or channel to one or more channels.",
     {
-    "connectable_id": z.number().int().describe("ID of the block or channel to connect."),
-    "connectable_type": z.enum(["Block", "Channel"]).describe("Type of the connectable."),
-    "channel_ids": z.array(z.union([z.number().int(), z.string()])).min(1).max(20),
-    "position": z.number().int().optional().describe("Position to insert at within the channel. Only valid\nwhen connecting to a single channel.\n")
-  },
+      description:
+        "Create a connection — Connects a block or channel to one or more channels.",
+      inputSchema: {
+        connectable_id: z
+          .number()
+          .int()
+          .describe("ID of the block or channel to connect."),
+        connectable_type: z
+          .enum(["Block", "Channel"])
+          .describe("Type of the connectable."),
+        channel_ids: z
+          .array(z.union([z.number().int(), z.string()]))
+          .min(1)
+          .max(20),
+        position: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            "Position to insert at within the channel. Only valid\nwhen connecting to a single channel.\n",
+          ),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.POST("/v3/connections", {
-      body: { "connectable_id": args["connectable_id"], "connectable_type": args["connectable_type"], "channel_ids": args["channel_ids"], "position": args["position"] }
-    } as any);
+          body: {
+            connectable_id: args["connectable_id"],
+            connectable_type: args["connectable_type"],
+            channel_ids: args["channel_ids"],
+            position: args["position"],
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getConnection",
-    "Get connection details — Returns detailed information about a connection, including abilities (whether the current user can remove the connection).",
     {
-    "id": z.number().int().describe("Resource ID")
-  },
+      description:
+        "Get connection details — Returns detailed information about a connection, including abilities (whether the current user can remove the connection).",
+      inputSchema: {
+        id: z.number().int().describe("Resource ID"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/connections/{id}", {
-      params: {
-        path: { id: args["id"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "deleteConnection",
-    "Delete a connection — Removes a block or channel from a channel by deleting the connection.",
     {
-    "id": z.number().int().describe("Resource ID")
-  },
+      description:
+        "Delete a connection — Removes a block or channel from a channel by deleting the connection.",
+      inputSchema: {
+        id: z.number().int().describe("Resource ID"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.DELETE("/v3/connections/{id}", {
-      params: {
-        path: { id: args["id"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "moveConnection",
-    "Move a connection — Moves a connection to a new position within its channel.",
     {
-    "id": z.number().int().describe("Resource ID"),
-    "movement": z.enum(["insert_at", "move_to_top", "move_to_bottom", "move_up", "move_down"]).optional(),
-    "position": z.number().int().optional().describe("Target position (required when movement is insert_at)")
-  },
+      description:
+        "Move a connection — Moves a connection to a new position within its channel.",
+      inputSchema: {
+        id: z.number().int().describe("Resource ID"),
+        movement: z
+          .enum([
+            "insert_at",
+            "move_to_top",
+            "move_to_bottom",
+            "move_up",
+            "move_down",
+          ])
+          .optional(),
+        position: z
+          .number()
+          .int()
+          .optional()
+          .describe("Target position (required when movement is insert_at)"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.POST("/v3/connections/{id}/move", {
-      params: {
-        path: { id: args["id"] }
-      },
-      body: { "movement": args["movement"], "position": args["position"] }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+          body: { movement: args["movement"], position: args["position"] },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getChannelContents",
-    "Get channel contents — Returns paginated contents (blocks and channels) from a channel.",
     {
-    "id": z.string().describe("Resource ID or slug"),
-    "page": z.number().int().optional().describe("Page number for pagination"),
-    "per": z.number().int().optional().describe("Number of items per page (max 100)"),
-    "sort": z.enum(["position_asc", "position_desc", "created_at_asc", "created_at_desc", "updated_at_asc", "updated_at_desc"]).optional().describe("Sort channel contents. Use `position` for the owner's manual\narrangement, or sort by date. Defaults to `position_desc`.\n"),
-    "user_id": z.number().int().optional().describe("Filter by user who added the content")
-  },
+      description:
+        "Get channel contents — Returns paginated contents (blocks and channels) from a channel.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+        sort: z
+          .enum([
+            "position_asc",
+            "position_desc",
+            "created_at_asc",
+            "created_at_desc",
+            "updated_at_asc",
+            "updated_at_desc",
+          ])
+          .optional()
+          .describe(
+            "Sort channel contents. Use `position` for the owner's manual\narrangement, or sort by date. Defaults to `position_desc`.\n",
+          ),
+        user_id: z
+          .number()
+          .int()
+          .optional()
+          .describe("Filter by user who added the content"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/channels/{id}/contents", {
-      params: {
-        path: { id: args["id"] },
-        query: { page: args["page"], per: args["per"], sort: args["sort"], user_id: args["user_id"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+            query: {
+              page: args["page"],
+              per: args["per"],
+              sort: args["sort"],
+              user_id: args["user_id"],
+            },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getChannelConnections",
-    "Get channel connections — Returns paginated list of channels where this channel appears.",
     {
-    "id": z.string().describe("Resource ID or slug"),
-    "page": z.number().int().optional().describe("Page number for pagination"),
-    "per": z.number().int().optional().describe("Number of items per page (max 100)"),
-    "sort": z.enum(["created_at_desc", "created_at_asc"]).optional().describe("Sort by the date the relationship was created.")
-  },
+      description:
+        "Get channel connections — Returns paginated list of channels where this channel appears.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+        sort: z
+          .enum(["created_at_desc", "created_at_asc"])
+          .optional()
+          .describe("Sort by the date the relationship was created."),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
-        const { data, error } = await client.GET("/v3/channels/{id}/connections", {
-      params: {
-        path: { id: args["id"] },
-        query: { page: args["page"], per: args["per"], sort: args["sort"] }
-      }
-    } as any);
+        const { data, error } = await client.GET(
+          "/v3/channels/{id}/connections",
+          {
+            params: {
+              path: { id: args["id"] },
+              query: {
+                page: args["page"],
+                per: args["per"],
+                sort: args["sort"],
+              },
+            },
+          } as any,
+        );
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getChannelFollowers",
-    "Get channel followers — Returns paginated list of users who follow this channel.",
     {
-    "id": z.string().describe("Resource ID or slug"),
-    "page": z.number().int().optional().describe("Page number for pagination"),
-    "per": z.number().int().optional().describe("Number of items per page (max 100)"),
-    "sort": z.enum(["created_at_desc", "created_at_asc"]).optional().describe("Sort by the date the relationship was created.")
-  },
+      description:
+        "Get channel followers — Returns paginated list of users who follow this channel.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+        sort: z
+          .enum(["created_at_desc", "created_at_asc"])
+          .optional()
+          .describe("Sort by the date the relationship was created."),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
-        const { data, error } = await client.GET("/v3/channels/{id}/followers", {
-      params: {
-        path: { id: args["id"] },
-        query: { page: args["page"], per: args["per"], sort: args["sort"] }
-      }
-    } as any);
+        const { data, error } = await client.GET(
+          "/v3/channels/{id}/followers",
+          {
+            params: {
+              path: { id: args["id"] },
+              query: {
+                page: args["page"],
+                per: args["per"],
+                sort: args["sort"],
+              },
+            },
+          } as any,
+        );
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getCurrentUser",
-    "Get current user — Returns the currently authenticated user's profile",
-    {},
+    {
+      description:
+        "Get current user — Returns the currently authenticated user's profile",
+      inputSchema: {},
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/me");
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getUser",
-    "Get a user — Returns detailed information about a specific user by their slug.",
     {
-    "id": z.string().describe("Resource ID or slug")
-  },
+      description:
+        "Get a user — Returns detailed information about a specific user by their slug.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/users/{id}", {
-      params: {
-        path: { id: args["id"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getUserContents",
-    "Get user contents — Returns paginated contents (blocks and channels) created by a user.",
     {
-    "id": z.string().describe("Resource ID or slug"),
-    "page": z.number().int().optional().describe("Page number for pagination"),
-    "per": z.number().int().optional().describe("Number of items per page (max 100)"),
-    "sort": z.enum(["created_at_asc", "created_at_desc", "updated_at_asc", "updated_at_desc"]).optional().describe("Sort by creation or last update time."),
-    "type": z.enum(["Text", "Image", "Link", "Attachment", "Embed", "Channel", "Block"]).optional().describe("Filter to a specific content type.")
-  },
+      description:
+        "Get user contents — Returns paginated contents (blocks and channels) created by a user.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+        sort: z
+          .enum([
+            "created_at_asc",
+            "created_at_desc",
+            "updated_at_asc",
+            "updated_at_desc",
+          ])
+          .optional()
+          .describe("Sort by creation or last update time."),
+        type: z
+          .enum([
+            "Text",
+            "Image",
+            "Link",
+            "Attachment",
+            "Embed",
+            "Channel",
+            "Block",
+          ])
+          .optional()
+          .describe("Filter to a specific content type."),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/users/{id}/contents", {
-      params: {
-        path: { id: args["id"] },
-        query: { page: args["page"], per: args["per"], sort: args["sort"], type: args["type"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+            query: {
+              page: args["page"],
+              per: args["per"],
+              sort: args["sort"],
+              type: args["type"],
+            },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getUserFollowers",
-    "Get user followers — Returns paginated list of users who follow this user.",
     {
-    "id": z.string().describe("Resource ID or slug"),
-    "page": z.number().int().optional().describe("Page number for pagination"),
-    "per": z.number().int().optional().describe("Number of items per page (max 100)"),
-    "sort": z.enum(["created_at_desc", "created_at_asc"]).optional().describe("Sort by the date the relationship was created.")
-  },
+      description:
+        "Get user followers — Returns paginated list of users who follow this user.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+        sort: z
+          .enum(["created_at_desc", "created_at_asc"])
+          .optional()
+          .describe("Sort by the date the relationship was created."),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/users/{id}/followers", {
-      params: {
-        path: { id: args["id"] },
-        query: { page: args["page"], per: args["per"], sort: args["sort"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+            query: { page: args["page"], per: args["per"], sort: args["sort"] },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getUserFollowing",
-    "Get user following — Returns paginated list of users, channels, and groups that this user follows.",
     {
-    "id": z.string().describe("Resource ID or slug"),
-    "page": z.number().int().optional().describe("Page number for pagination"),
-    "per": z.number().int().optional().describe("Number of items per page (max 100)"),
-    "sort": z.enum(["created_at_desc", "created_at_asc"]).optional().describe("Sort by the date the relationship was created."),
-    "type": z.enum(["User", "Channel", "Group"]).optional().describe("Filter by followable type")
-  },
+      description:
+        "Get user following — Returns paginated list of users, channels, and groups that this user follows.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+        sort: z
+          .enum(["created_at_desc", "created_at_asc"])
+          .optional()
+          .describe("Sort by the date the relationship was created."),
+        type: z
+          .enum(["User", "Channel", "Group"])
+          .optional()
+          .describe("Filter by followable type"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/users/{id}/following", {
-      params: {
-        path: { id: args["id"] },
-        query: { page: args["page"], per: args["per"], sort: args["sort"], type: args["type"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+            query: {
+              page: args["page"],
+              per: args["per"],
+              sort: args["sort"],
+              type: args["type"],
+            },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getGroup",
-    "Get a group — Returns detailed information about a specific group by its slug.",
     {
-    "id": z.string().describe("Resource ID or slug")
-  },
+      description:
+        "Get a group — Returns detailed information about a specific group by its slug.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/groups/{id}", {
-      params: {
-        path: { id: args["id"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getGroupContents",
-    "Get group contents — Returns paginated contents (blocks and channels) created by a group.",
     {
-    "id": z.string().describe("Resource ID or slug"),
-    "page": z.number().int().optional().describe("Page number for pagination"),
-    "per": z.number().int().optional().describe("Number of items per page (max 100)"),
-    "sort": z.enum(["created_at_asc", "created_at_desc", "updated_at_asc", "updated_at_desc"]).optional().describe("Sort by creation or last update time."),
-    "type": z.enum(["Text", "Image", "Link", "Attachment", "Embed", "Channel", "Block"]).optional().describe("Filter to a specific content type.")
-  },
+      description:
+        "Get group contents — Returns paginated contents (blocks and channels) created by a group.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+        sort: z
+          .enum([
+            "created_at_asc",
+            "created_at_desc",
+            "updated_at_asc",
+            "updated_at_desc",
+          ])
+          .optional()
+          .describe("Sort by creation or last update time."),
+        type: z
+          .enum([
+            "Text",
+            "Image",
+            "Link",
+            "Attachment",
+            "Embed",
+            "Channel",
+            "Block",
+          ])
+          .optional()
+          .describe("Filter to a specific content type."),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/groups/{id}/contents", {
-      params: {
-        path: { id: args["id"] },
-        query: { page: args["page"], per: args["per"], sort: args["sort"], type: args["type"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+            query: {
+              page: args["page"],
+              per: args["per"],
+              sort: args["sort"],
+              type: args["type"],
+            },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "getGroupFollowers",
-    "Get group followers — Returns paginated list of users who follow this group.",
     {
-    "id": z.string().describe("Resource ID or slug"),
-    "page": z.number().int().optional().describe("Page number for pagination"),
-    "per": z.number().int().optional().describe("Number of items per page (max 100)"),
-    "sort": z.enum(["created_at_desc", "created_at_asc"]).optional().describe("Sort by the date the relationship was created.")
-  },
+      description:
+        "Get group followers — Returns paginated list of users who follow this group.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+        sort: z
+          .enum(["created_at_desc", "created_at_asc"])
+          .optional()
+          .describe("Sort by the date the relationship was created."),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/groups/{id}/followers", {
-      params: {
-        path: { id: args["id"] },
-        query: { page: args["page"], per: args["per"], sort: args["sort"] }
-      }
-    } as any);
+          params: {
+            path: { id: args["id"] },
+            query: { page: args["page"], per: args["per"], sort: args["sort"] },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 
-  server.tool(
+  server.registerTool(
     "search",
-    "Search across Are.na — Search across blocks, channels, users, and groups.",
     {
-    "query": z.string().optional().describe("The search query string. Supports full-text search across titles,\ndescriptions, and content. Use `*` as a wildcard to match everything\n(useful when filtering by type, scope, or extension).\n"),
-    "type": z.array(z.enum(["All", "Text", "Image", "Link", "Attachment", "Embed", "Channel", "Block", "User", "Group"])).optional().describe("Filter results by content type. Accepts comma-separated values.\n- Block subtypes: `Text`, `Image`, `Link`, `Attachment`, `Embed`\n- Aggregate types: `Block` (all block types), `Channel`, `User`, `Group`\n- `All` returns everything (default behavior)\n"),
-    "scope": z.enum(["all", "my", "following"]).optional().describe("Limit search to a specific context."),
-    "user_id": z.number().int().optional().describe("Limit search to a specific user's content."),
-    "group_id": z.number().int().optional().describe("Limit search to a specific group's content."),
-    "channel_id": z.number().int().optional().describe("Limit search to a specific channel's content."),
-    "ext": z.array(z.enum(["aac", "ai", "aiff", "avi", "avif", "bmp", "csv", "doc", "docx", "eps", "epub", "fla", "gif", "h264", "heic", "heif", "ind", "indd", "jpeg", "jpg", "key", "kml", "kmz", "latex", "m4a", "ma", "mb", "mid", "midi", "mov", "mp3", "mp4", "mp4v", "mpeg", "mpg", "mpg4", "numbers", "oga", "ogg", "ogv", "otf", "pages", "pdf", "pgp", "png", "ppt", "pptx", "psd", "svg", "swa", "swf", "tex", "texi", "texinfo", "tfm", "tif", "tiff", "torrent", "ttc", "ttf", "txt", "wav", "webm", "webp", "wma", "xls", "xlsx", "xlt"])).optional().describe("Filter results by file extension. Accepts comma-separated values.\nOnly applies to Attachment and Image block types. Common extensions\ninclude: pdf, jpg, png, gif, mp4, mp3, doc, xls, etc.\n"),
-    "sort": z.enum(["score_desc", "created_at_desc", "created_at_asc", "updated_at_desc", "updated_at_asc", "name_asc", "name_desc", "connections_count_desc", "random"]).optional().describe("Sort by relevance, date, name, or popularity. Defaults to `score_desc`.\nUse `random` with `seed` for reproducible random ordering.\n"),
-    "after": z.string().optional().describe("Filter to only return results updated after this timestamp.\nUseful for incremental syncing or finding recently modified content.\nFormat: ISO 8601 datetime string.\n"),
-    "seed": z.number().int().optional().describe("Random seed for reproducible random ordering. Only used when\n`sort=random`. Providing the same seed will return results in\nthe same order, useful for pagination through random results.\n"),
-    "page": z.number().int().optional().describe("Page number for pagination"),
-    "per": z.number().int().optional().describe("Number of items per page (max 100)")
-  },
+      description:
+        "Search across Are.na — Search across blocks, channels, users, and groups.",
+      inputSchema: {
+        query: z
+          .string()
+          .optional()
+          .describe(
+            "The search query string. Supports full-text search across titles,\ndescriptions, and content. Use `*` as a wildcard to match everything\n(useful when filtering by type, scope, or extension).\n",
+          ),
+        type: z
+          .array(
+            z.enum([
+              "All",
+              "Text",
+              "Image",
+              "Link",
+              "Attachment",
+              "Embed",
+              "Channel",
+              "Block",
+              "User",
+              "Group",
+            ]),
+          )
+          .optional()
+          .describe(
+            "Filter results by content type. Accepts comma-separated values.\n- Block subtypes: `Text`, `Image`, `Link`, `Attachment`, `Embed`\n- Aggregate types: `Block` (all block types), `Channel`, `User`, `Group`\n- `All` returns everything (default behavior)\n",
+          ),
+        scope: z
+          .enum(["all", "my", "following"])
+          .optional()
+          .describe("Limit search to a specific context."),
+        user_id: z
+          .number()
+          .int()
+          .optional()
+          .describe("Limit search to a specific user's content."),
+        group_id: z
+          .number()
+          .int()
+          .optional()
+          .describe("Limit search to a specific group's content."),
+        channel_id: z
+          .number()
+          .int()
+          .optional()
+          .describe("Limit search to a specific channel's content."),
+        ext: z
+          .array(
+            z.enum([
+              "aac",
+              "ai",
+              "aiff",
+              "avi",
+              "avif",
+              "bmp",
+              "csv",
+              "doc",
+              "docx",
+              "eps",
+              "epub",
+              "fla",
+              "gif",
+              "h264",
+              "heic",
+              "heif",
+              "ind",
+              "indd",
+              "jpeg",
+              "jpg",
+              "key",
+              "kml",
+              "kmz",
+              "latex",
+              "m4a",
+              "ma",
+              "mb",
+              "mid",
+              "midi",
+              "mov",
+              "mp3",
+              "mp4",
+              "mp4v",
+              "mpeg",
+              "mpg",
+              "mpg4",
+              "numbers",
+              "oga",
+              "ogg",
+              "ogv",
+              "otf",
+              "pages",
+              "pdf",
+              "pgp",
+              "png",
+              "ppt",
+              "pptx",
+              "psd",
+              "svg",
+              "swa",
+              "swf",
+              "tex",
+              "texi",
+              "texinfo",
+              "tfm",
+              "tif",
+              "tiff",
+              "torrent",
+              "ttc",
+              "ttf",
+              "txt",
+              "wav",
+              "webm",
+              "webp",
+              "wma",
+              "xls",
+              "xlsx",
+              "xlt",
+            ]),
+          )
+          .optional()
+          .describe(
+            "Filter results by file extension. Accepts comma-separated values.\nOnly applies to Attachment and Image block types. Common extensions\ninclude: pdf, jpg, png, gif, mp4, mp3, doc, xls, etc.\n",
+          ),
+        sort: z
+          .enum([
+            "score_desc",
+            "created_at_desc",
+            "created_at_asc",
+            "updated_at_desc",
+            "updated_at_asc",
+            "name_asc",
+            "name_desc",
+            "connections_count_desc",
+            "random",
+          ])
+          .optional()
+          .describe(
+            "Sort by relevance, date, name, or popularity. Defaults to `score_desc`.\nUse `random` with `seed` for reproducible random ordering.\n",
+          ),
+        after: z
+          .string()
+          .optional()
+          .describe(
+            "Filter to only return results updated after this timestamp.\nUseful for incremental syncing or finding recently modified content.\nFormat: ISO 8601 datetime string.\n",
+          ),
+        seed: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            "Random seed for reproducible random ordering. Only used when\n`sort=random`. Providing the same seed will return results in\nthe same order, useful for pagination through random results.\n",
+          ),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+      },
+    },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/search", {
-      params: {
-        query: { query: args["query"], type: args["type"], scope: args["scope"], user_id: args["user_id"], group_id: args["group_id"], channel_id: args["channel_id"], ext: args["ext"], sort: args["sort"], after: args["after"], seed: args["seed"], page: args["page"], per: args["per"] }
-      }
-    } as any);
+          params: {
+            query: {
+              query: args["query"],
+              type: args["type"],
+              scope: args["scope"],
+              user_id: args["user_id"],
+              group_id: args["group_id"],
+              channel_id: args["channel_id"],
+              ext: args["ext"],
+              sort: args["sort"],
+              after: args["after"],
+              seed: args["seed"],
+              page: args["page"],
+              per: args["per"],
+            },
+          },
+        } as any);
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
-    }
+    },
   );
 }
