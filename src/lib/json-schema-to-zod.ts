@@ -26,7 +26,10 @@ interface ConvertOptions {
   rootSpec?: Record<string, unknown>;
 }
 
-function resolveRef(ref: string, rootSpec?: Record<string, unknown>): JsonSchema {
+function resolveRef(
+  ref: string,
+  rootSpec?: Record<string, unknown>,
+): JsonSchema {
   if (!rootSpec || !ref.startsWith("#/")) return {};
   const parts = ref.slice(2).split("/");
   let current: unknown = rootSpec;
@@ -52,17 +55,13 @@ export function jsonSchemaToZodString(
   }
 
   if (schema.oneOf) {
-    const variants = schema.oneOf.map((s) =>
-      jsonSchemaToZodString(s, options),
-    );
+    const variants = schema.oneOf.map((s) => jsonSchemaToZodString(s, options));
     if (variants.length === 1) return variants[0];
     return `z.union([${variants.join(", ")}])`;
   }
 
   if (schema.allOf) {
-    const parts = schema.allOf.map((s) =>
-      jsonSchemaToZodString(s, options),
-    );
+    const parts = schema.allOf.map((s) => jsonSchemaToZodString(s, options));
     if (parts.length === 1) return parts[0];
     return parts.reduce((acc, part) => `${acc}.and(${part})`);
   }

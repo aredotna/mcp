@@ -18,16 +18,21 @@ function makeRequest(
 
 describe("HTTP transport auth", () => {
   it("rejects requests without a bearer token with 401", async () => {
-    const req = makeRequest("POST", "/mcp", {}, {
-      jsonrpc: "2.0",
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: { name: "test", version: "1.0" },
+    const req = makeRequest(
+      "POST",
+      "/mcp",
+      {},
+      {
+        jsonrpc: "2.0",
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "test", version: "1.0" },
+        },
+        id: 1,
       },
-      id: 1,
-    });
+    );
     const env = {};
     const res = await app.fetch(req, env);
     expect(res.status).toBe(401);

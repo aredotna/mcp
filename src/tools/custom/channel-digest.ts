@@ -25,7 +25,12 @@ interface ChannelMeta {
   created_at: string;
   updated_at: string;
   owner: { slug?: string; name?: string; class?: string };
-  counts: { blocks: number; channels: number; contents: number; collaborators: number };
+  counts: {
+    blocks: number;
+    channels: number;
+    contents: number;
+    collaborators: number;
+  };
   collaborators?: Array<{ slug?: string; name?: string; class?: string }>;
 }
 
@@ -43,16 +48,16 @@ export function registerChannelDigest(server: McpServer): void {
       description:
         "Get a structured summary of an Are.na channel including metadata, type breakdown, collaborators, and recent activity. Samples content rather than fetching everything, so it works efficiently on large channels.",
       inputSchema: {
-        channel_id: z
-          .string()
-          .describe("Channel ID or slug"),
+        channel_id: z.string().describe("Channel ID or slug"),
         sample_size: z
           .number()
           .int()
           .min(1)
           .max(100)
           .optional()
-          .describe("Number of recent items to sample for type breakdown (default 100, max 100)"),
+          .describe(
+            "Number of recent items to sample for type breakdown (default 100, max 100)",
+          ),
       },
     },
     async (args, extra) => {
@@ -92,8 +97,7 @@ export function registerChannelDigest(server: McpServer): void {
           const cls = item.class ?? "Unknown";
           typeCounts[cls] = (typeCounts[cls] ?? 0) + 1;
 
-          const who =
-            item.connection?.user?.slug ?? item.user?.slug;
+          const who = item.connection?.user?.slug ?? item.user?.slug;
           if (who) contributors.add(who);
         }
 
@@ -132,7 +136,9 @@ export function registerChannelDigest(server: McpServer): void {
           })),
           type_breakdown: {
             ...(isSampled
-              ? { note: `Based on ${sampled} most recent items out of ${total} total` }
+              ? {
+                  note: `Based on ${sampled} most recent items out of ${total} total`,
+                }
               : {}),
             ...typeCounts,
           },
