@@ -932,6 +932,50 @@ export function registerGeneratedTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "getUserGroups",
+    {
+      description:
+        "Get user groups — Returns paginated list of groups the user belongs to (as owner or member).",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+        sort: z
+          .enum([
+            "name_asc",
+            "name_desc",
+            "created_at_asc",
+            "created_at_desc",
+            "updated_at_asc",
+            "updated_at_desc",
+          ])
+          .optional()
+          .describe("Sort groups by name or date."),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.GET("/v3/users/{id}/groups", {
+          params: {
+            path: { id: args["id"] },
+            query: { page: args["page"], per: args["per"], sort: args["sort"] },
+          },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
     "getGroup",
     {
       description:

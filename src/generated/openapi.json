@@ -8,7 +8,7 @@
       "url": "https://www.are.na/about#contact",
       "email": "help@are.na"
     },
-    "description": "The Are.na REST API provides programmatic access to the Are.na platform - a tool for connecting ideas and building knowledge together.\n\n## Getting Started\n\nAll API requests use `https://api.are.na` as the base URL. Responses are JSON with consistent structure including hypermedia links for resource discovery.\n\n## Authentication\n\nMost endpoints work without authentication but provide additional access when authenticated. Use the standard `Authorization` header:\n\n```\nAuthorization: Bearer YOUR_TOKEN\n```\n\n**Supported Token Types:**\n- **OAuth2 Access Token**: Obtained via [OAuth2 flow](https://www.are.na/developers/explore/authentication) (supports PKCE)\n- **Personal Access Token**: From [are.na/settings/oauth](https://www.are.na/settings/personal-access-tokens)\n\nFor OAuth2, note that the authorization endpoint is hosted on the main site (`www.are.na/oauth/authorize`),\nwhile the token endpoint is on the API (`api.are.na/v3/oauth/token`).\n\n**Authentication Levels:**\n- **Public**: No authentication needed (e.g., `/v3/ping`)\n- **Optional**: Works unauthenticated but respects permissions when authenticated\n- **Required**: Returns `401 Unauthorized` without valid token (e.g., `/v3/me`)\n\n## Scopes\n\nOAuth2 tokens and personal access tokens support the following scopes:\n\n| Scope | Description |\n|-------|-------------|\n| `read` | Read-only access (default) — write operations will return `403 Forbidden` |\n| `write` | Full read and write access |\n\nTokens default to `read` scope. Request `write` scope when creating a token or authorizing an OAuth2 application to enable write access. Read-only tokens can view all resources the user has access to but cannot create, update, or delete anything.\n\n## Rate Limiting\n\n**Acceptable Use**: This API is intended for building applications that integrate with Are.na, not for scraping or bulk data collection. Automated crawling, systematic downloading of content, or any form of structured data harvesting is prohibited. If you need bulk access to data for research or other purposes, please [contact us](mailto:help@are.na) to discuss your use case.\n\nRate limits are enforced per-minute based on your tier:\n\n| Tier | Requests/Minute |\n|------|-----------------|\n| Guest (unauthenticated) | 30 |\n| Free | 120 |\n| Premium | 300 |\n| Supporter/Lifetime | 600 |\n\n**Rate Limit Headers** (included in every response):\n- `X-RateLimit-Limit`: Your tier's per-minute limit\n- `X-RateLimit-Tier`: Current tier (guest/free/premium/supporter)\n- `X-RateLimit-Window`: Time window in seconds (always 60)\n- `X-RateLimit-Reset`: Unix timestamp when the limit resets\n\nWhen you exceed limits, you'll receive a `429 Too Many Requests` response with upgrade recommendations and retry timing.\n\n## Request Validation\n\nAll parameters are validated against this OpenAPI specification. Invalid requests return `400 Bad Request` with detailed error messages.\n\n## Error Responses\n\nErrors use standard HTTP status codes with JSON bodies:\n\n```json\n{\n  \"error\": \"Not Found\",\n  \"code\": 404,\n  \"details\": {\n    \"message\": \"The resource you requested does not exist\"\n  }\n}\n```\n\nCommon status codes:\n- `400`: Invalid request parameters\n- `401`: Authentication required or invalid\n- `403`: Insufficient permissions\n- `404`: Resource not found\n- `429`: Rate limit exceeded\n\n## Pagination\n\nList endpoints return paginated results. Use these query parameters:\n- `page`: Page number (default: 1)\n- `per`: Items per page (default: 24, max: 100)\n\nResponses include a `meta` object with pagination info:\n\n```json\n{\n  \"data\": [...],\n  \"meta\": {\n    \"current_page\": 1,\n    \"per_page\": 25,\n    \"total_pages\": 5,\n    \"total_count\": 120,\n    \"next_page\": 2,\n    \"prev_page\": null,\n    \"has_more_pages\": true\n  }\n}\n```\n\n## Best Practices\n\nAre.na channels and users can contain thousands of items. The following guidelines will help you build responsive, well-behaved integrations.\n\n### Paginate, Don't Enumerate\n\nNever try to load an entire channel or user's content in one pass. Use `page` and `per` parameters to fetch only the data you need right now. Check `meta.has_more_pages` and load subsequent pages on demand rather than in a loop.\n\n**Do:**\n- Fetch the first page and display it immediately\n- Load more pages as the user scrolls or explicitly requests them\n\n**Don't:**\n- Loop through all pages at startup to \"build a complete picture\"\n- Set `per=100` and iterate until `has_more_pages` is `false`\n\n### Use HTTP Caching\n\nAll responses include `Cache-Control` and `ETag` headers. Unauthenticated responses are `max-age=300, public` — your client can reuse them for 5 minutes without any network request. Authenticated responses are `private, no-cache` — your client may store them but must revalidate before each reuse.\n\nTo revalidate, send the `ETag` value from a previous response as `If-None-Match`:\n\n```\nGET /v3/channels/123\nIf-None-Match: \"abc123\"\n```\n\nIf the resource hasn't changed, the API returns `304 Not Modified` with no body, saving bandwidth. Single-resource endpoints (e.g., `/v3/channels/:id`, `/v3/blocks/:id`) also skip server-side work entirely on a match. Note that 304 responses still count against your rate limit.\n\n### Fetch Summaries Before Details\n\nStart with lightweight list endpoints (e.g., a channel's first page of contents) before drilling into individual blocks or nested resources. Avoid eagerly resolving every connection or nested object — fetch details only when a user explicitly needs them.\n\n### Respect Rate Limits Gracefully\n\nMonitor the `X-RateLimit-Limit` and `X-RateLimit-Reset` headers. If you receive a `429` response, wait until the reset window before retrying — don't retry in a tight loop. Consider adding exponential backoff and a short delay between sequential requests (e.g., 200–500ms) when making multiple calls.\n\n### Design for Partial Data\n\nChannels can have tens of thousands of connections. Your application should function well with just the first page of results, not require the full dataset upfront. Display what you have and offer the user a way to load more.\n\n### Build Statically When Possible\n\nIf you're building a website that displays Are.na content, prefer static site generation (fetching data at build time) over live API requests on every page view. This eliminates rate limit concerns for your visitors and makes your site faster and more resilient. If you need fresher data, cache responses server-side with a reasonable TTL rather than proxying every request through to the API.\n\n### Avoid Write-Heavy Loops\n\nIf you're creating or connecting multiple blocks, batch your logic and add delays between write operations. Rapid-fire mutations can hit rate limits quickly and may trigger abuse detection.\n"
+    "description": "The Are.na REST API provides programmatic access to the Are.na platform - a tool for connecting ideas and building knowledge together.\n\n## Getting Started\n\nAll API requests use `https://api.are.na` as the base URL. Responses are JSON with consistent structure including hypermedia links for resource discovery.\n\n## Authentication\n\nMost endpoints work without authentication but provide additional access when authenticated. Use the standard `Authorization` header:\n\n```\nAuthorization: Bearer YOUR_TOKEN\n```\n\n**Supported Token Types:**\n- **OAuth2 Access Token**: Obtained via [OAuth2 flow](https://www.are.na/developers/explore/authentication) (supports PKCE)\n- **Personal Access Token**: From [are.na/settings/oauth](https://www.are.na/settings/personal-access-tokens)\n\nFor OAuth2, note that the authorization endpoint is hosted on the main site (`www.are.na/oauth/authorize`),\nwhile the token endpoint is on the API (`api.are.na/v3/oauth/token`). The authorization endpoint supports\n`read` and `write` scopes (defaulting to `read` if omitted). A typical authorization URL looks like:\n\n```\nhttps://www.are.na/oauth/authorize?client_id=YOUR_CLIENT_ID\u0026redirect_uri=YOUR_REDIRECT_URI\u0026response_type=code\u0026scope=read\n```\n\n**Authentication Levels:**\n- **Public**: No authentication needed (e.g., `/v3/ping`)\n- **Optional**: Works unauthenticated but respects permissions when authenticated\n- **Required**: Returns `401 Unauthorized` without valid token (e.g., `/v3/me`)\n\n## Scopes\n\nOAuth2 tokens and personal access tokens support the following scopes:\n\n| Scope | Description |\n|-------|-------------|\n| `read` | Read-only access (default) — write operations will return `403 Forbidden` |\n| `write` | Full read and write access |\n\nTokens default to `read` scope. Request `write` scope when creating a token or authorizing an OAuth2 application to enable write access. Read-only tokens can view all resources the user has access to but cannot create, update, or delete anything.\n\n## Rate Limiting\n\n**Acceptable Use**: This API is intended for building applications that integrate with Are.na, not for scraping or bulk data collection. Automated crawling, systematic downloading of content, or any form of structured data harvesting is prohibited. If you need bulk access to data for research or other purposes, please [contact us](mailto:help@are.na) to discuss your use case.\n\nRate limits are enforced per-minute based on your tier:\n\n| Tier | Requests/Minute |\n|------|-----------------|\n| Guest (unauthenticated) | 30 |\n| Free | 120 |\n| Premium | 300 |\n| Supporter/Lifetime | 600 |\n\n**Rate Limit Headers** (included in every response):\n- `X-RateLimit-Limit`: Your tier's per-minute limit\n- `X-RateLimit-Tier`: Current tier (guest/free/premium/supporter)\n- `X-RateLimit-Window`: Time window in seconds (always 60)\n- `X-RateLimit-Reset`: Unix timestamp when the limit resets\n\nWhen you exceed limits, you'll receive a `429 Too Many Requests` response with upgrade recommendations and retry timing.\n\n## Request Validation\n\nAll parameters are validated against this OpenAPI specification. Invalid requests return `400 Bad Request` with detailed error messages.\n\n## Error Responses\n\nErrors use standard HTTP status codes with JSON bodies:\n\n```json\n{\n  \"error\": \"Not Found\",\n  \"code\": 404,\n  \"details\": {\n    \"message\": \"The resource you requested does not exist\"\n  }\n}\n```\n\nCommon status codes:\n- `400`: Invalid request parameters\n- `401`: Authentication required or invalid\n- `403`: Insufficient permissions\n- `404`: Resource not found\n- `429`: Rate limit exceeded\n\n## Pagination\n\nList endpoints return paginated results. Use these query parameters:\n- `page`: Page number (default: 1)\n- `per`: Items per page (default: 24, max: 100)\n\nResponses include a `meta` object with pagination info:\n\n```json\n{\n  \"data\": [...],\n  \"meta\": {\n    \"current_page\": 1,\n    \"per_page\": 25,\n    \"total_pages\": 5,\n    \"total_count\": 120,\n    \"next_page\": 2,\n    \"prev_page\": null,\n    \"has_more_pages\": true\n  }\n}\n```\n\n## Best Practices\n\nAre.na channels and users can contain thousands of items. The following guidelines will help you build responsive, well-behaved integrations.\n\n### Paginate, Don't Enumerate\n\nNever try to load an entire channel or user's content in one pass. Use `page` and `per` parameters to fetch only the data you need right now. Check `meta.has_more_pages` and load subsequent pages on demand rather than in a loop.\n\n**Do:**\n- Fetch the first page and display it immediately\n- Load more pages as the user scrolls or explicitly requests them\n\n**Don't:**\n- Loop through all pages at startup to \"build a complete picture\"\n- Set `per=100` and iterate until `has_more_pages` is `false`\n\n### Use HTTP Caching\n\nAll responses include `Cache-Control` and `ETag` headers. Unauthenticated responses are `max-age=300, public` — your client can reuse them for 5 minutes without any network request. Authenticated responses are `private, no-cache` — your client may store them but must revalidate before each reuse.\n\nTo revalidate, send the `ETag` value from a previous response as `If-None-Match`:\n\n```\nGET /v3/channels/123\nIf-None-Match: \"abc123\"\n```\n\nIf the resource hasn't changed, the API returns `304 Not Modified` with no body, saving bandwidth. Single-resource endpoints (e.g., `/v3/channels/:id`, `/v3/blocks/:id`) also skip server-side work entirely on a match. Note that 304 responses still count against your rate limit.\n\n### Fetch Summaries Before Details\n\nStart with lightweight list endpoints (e.g., a channel's first page of contents) before drilling into individual blocks or nested resources. Avoid eagerly resolving every connection or nested object — fetch details only when a user explicitly needs them.\n\n### Respect Rate Limits Gracefully\n\nMonitor the `X-RateLimit-Limit` and `X-RateLimit-Reset` headers. If you receive a `429` response, wait until the reset window before retrying — don't retry in a tight loop. Consider adding exponential backoff and a short delay between sequential requests (e.g., 200–500ms) when making multiple calls.\n\n### Design for Partial Data\n\nChannels can have tens of thousands of connections. Your application should function well with just the first page of results, not require the full dataset upfront. Display what you have and offer the user a way to load more.\n\n### Build Statically When Possible\n\nIf you're building a website that displays Are.na content, prefer static site generation (fetching data at build time) over live API requests on every page view. This eliminates rate limit concerns for your visitors and makes your site faster and more resilient. If you need fresher data, cache responses server-side with a reasonable TTL rather than proxying every request through to the API.\n\n### Avoid Write-Heavy Loops\n\nIf you're creating or connecting multiple blocks, batch your logic and add delays between write operations. Rapid-fire mutations can hit rate limits quickly and may trigger abuse detection.\n"
   },
   "servers": [{ "url": "https://api.are.na", "description": "Production API" }],
   "security": [{ "BearerAuth": [] }, {}],
@@ -93,6 +93,14 @@
         "description": "Sort by creation or last update time.",
         "schema": { "$ref": "#/components/schemas/ContentSort" },
         "example": "created_at_desc"
+      },
+      "GroupSortParam": {
+        "name": "sort",
+        "in": "query",
+        "required": false,
+        "description": "Sort groups by name or date.",
+        "schema": { "$ref": "#/components/schemas/GroupSort" },
+        "example": "name_asc"
       },
       "ChannelContentSortParam": {
         "name": "sort",
@@ -819,6 +827,18 @@
         "type": "string",
         "description": "Sort order for user or group content.\n- `created_at_desc`: Newest first (default)\n- `created_at_asc`: Oldest first\n- `updated_at_desc`: Recently updated first\n- `updated_at_asc`: Least recently updated first\n",
         "enum": [
+          "created_at_asc",
+          "created_at_desc",
+          "updated_at_asc",
+          "updated_at_desc"
+        ]
+      },
+      "GroupSort": {
+        "type": "string",
+        "description": "Sort order for groups.\n- `name_asc`: Alphabetical (default)\n- `name_desc`: Reverse alphabetical\n- `created_at_desc`: Newest first\n- `created_at_asc`: Oldest first\n- `updated_at_desc`: Recently updated first\n- `updated_at_asc`: Least recently updated first\n",
+        "enum": [
+          "name_asc",
+          "name_desc",
           "created_at_asc",
           "created_at_desc",
           "updated_at_asc",
@@ -1941,6 +1961,25 @@
         "description": "Paginated list of channels with total count",
         "allOf": [
           { "$ref": "#/components/schemas/ChannelList" },
+          { "$ref": "#/components/schemas/PaginatedResponse" }
+        ]
+      },
+      "GroupList": {
+        "type": "object",
+        "description": "Data payload containing an array of groups",
+        "properties": {
+          "data": {
+            "type": "array",
+            "description": "Array of groups",
+            "items": { "$ref": "#/components/schemas/Group" }
+          }
+        },
+        "required": ["data"]
+      },
+      "GroupListResponse": {
+        "description": "Paginated list of groups with total count",
+        "allOf": [
+          { "$ref": "#/components/schemas/GroupList" },
           { "$ref": "#/components/schemas/PaginatedResponse" }
         ]
       },
@@ -3292,6 +3331,34 @@
                 "schema": {
                   "$ref": "#/components/schemas/FollowableListResponse"
                 }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
+          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
+          "404": { "$ref": "#/components/responses/NotFoundResponse" },
+          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+        }
+      }
+    },
+    "/v3/users/{id}/groups": {
+      "get": {
+        "summary": "Get user groups",
+        "operationId": "getUserGroups",
+        "description": "Returns paginated list of groups the user belongs to (as owner or member).\nWhen authenticated as the target user, includes private groups.\nOtherwise only public groups are returned.\n",
+        "tags": ["Users"],
+        "parameters": [
+          { "$ref": "#/components/parameters/SlugOrIdParam" },
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/PerParam" },
+          { "$ref": "#/components/parameters/GroupSortParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of groups the user belongs to",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GroupListResponse" }
               }
             }
           },

@@ -623,6 +623,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v3/users/{id}/groups": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get user groups
+     * @description Returns paginated list of groups the user belongs to (as owner or member).
+     *     When authenticated as the target user, includes private groups.
+     *     Otherwise only public groups are returned.
+     */
+    get: operations["getUserGroups"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v3/groups/{id}": {
     parameters: {
       query?: never;
@@ -1258,6 +1280,23 @@ export interface components {
      * @enum {string}
      */
     ContentSort:
+      | "created_at_asc"
+      | "created_at_desc"
+      | "updated_at_asc"
+      | "updated_at_desc";
+    /**
+     * @description Sort order for groups.
+     *     - `name_asc`: Alphabetical (default)
+     *     - `name_desc`: Reverse alphabetical
+     *     - `created_at_desc`: Newest first
+     *     - `created_at_asc`: Oldest first
+     *     - `updated_at_desc`: Recently updated first
+     *     - `updated_at_asc`: Least recently updated first
+     * @enum {string}
+     */
+    GroupSort:
+      | "name_asc"
+      | "name_desc"
       | "created_at_asc"
       | "created_at_desc"
       | "updated_at_asc"
@@ -2083,6 +2122,14 @@ export interface components {
     /** @description Paginated list of channels with total count */
     ChannelListResponse: components["schemas"]["ChannelList"] &
       components["schemas"]["PaginatedResponse"];
+    /** @description Data payload containing an array of groups */
+    GroupList: {
+      /** @description Array of groups */
+      data: components["schemas"]["Group"][];
+    };
+    /** @description Paginated list of groups with total count */
+    GroupListResponse: components["schemas"]["GroupList"] &
+      components["schemas"]["PaginatedResponse"];
     /** @description Paginated list of connectable content (blocks and channels) */
     ConnectableListResponse: components["schemas"]["ConnectableList"] &
       components["schemas"]["PaginatedResponse"];
@@ -2241,6 +2288,11 @@ export interface components {
      * @example created_at_desc
      */
     ContentSortParam: components["schemas"]["ContentSort"];
+    /**
+     * @description Sort groups by name or date.
+     * @example name_asc
+     */
+    GroupSortParam: components["schemas"]["GroupSort"];
     /**
      * @description Sort channel contents. Use `position` for the owner's manual
      *     arrangement, or sort by date. Defaults to `position_desc`.
@@ -3417,6 +3469,49 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["FollowableListResponse"];
+        };
+      };
+      401: components["responses"]["UnauthorizedResponse"];
+      403: components["responses"]["ForbiddenResponse"];
+      404: components["responses"]["NotFoundResponse"];
+      429: components["responses"]["RateLimitResponse"];
+    };
+  };
+  getUserGroups: {
+    parameters: {
+      query?: {
+        /**
+         * @description Page number for pagination
+         * @example 1
+         */
+        page?: components["parameters"]["PageParam"];
+        /**
+         * @description Number of items per page (max 100)
+         * @example 24
+         */
+        per?: components["parameters"]["PerParam"];
+        /**
+         * @description Sort groups by name or date.
+         * @example name_asc
+         */
+        sort?: components["parameters"]["GroupSortParam"];
+      };
+      header?: never;
+      path: {
+        /** @description Resource ID or slug */
+        id: components["parameters"]["SlugOrIdParam"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of groups the user belongs to */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GroupListResponse"];
         };
       };
       401: components["responses"]["UnauthorizedResponse"];
