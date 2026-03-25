@@ -176,7 +176,7 @@ oauthRoutes.get("/authorize", async (c) => {
   }
 
   const origin = new URL(c.req.url).origin;
-  const arenaScope = scope === "write" ? "write" : "read";
+  const arenaScope = scope === "read" ? "read" : "write";
 
   const arenaParams = new URLSearchParams({
     client_id: c.env.ARENA_OAUTH_CLIENT_ID,
