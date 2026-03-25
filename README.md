@@ -128,7 +128,7 @@ npx wrangler secret put ARENA_OAUTH_CLIENT_ID
 npx wrangler secret put ARENA_OAUTH_CLIENT_SECRET
 ```
 
-Register your OAuth application at [are.na/oauth/applications](https://www.are.na/oauth/applications) with redirect URI `https://mcp.are.na/callback` (or `http://127.0.0.1:8787/callback` for local dev).
+Register your OAuth application at [are.na/developers/oauth/applications](https://www.are.na/developers/oauth/applications) with redirect URI `https://mcp.are.na/callback` (or `http://127.0.0.1:8787/callback` for local dev).
 
 ### Testing
 
