@@ -3,5 +3,9 @@ main = "src/transports/http.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "81273da3369047b2a22fe5a005a6bbf6"
+
 [observability]
 enabled = true

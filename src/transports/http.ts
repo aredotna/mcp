@@ -3,9 +3,13 @@ import { cors } from "hono/cors";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { createMcpServer } from "../server";
+import { oauthRoutes } from "../auth/routes";
 
 interface Env {
   ARENA_ACCESS_TOKEN?: string;
+  OAUTH_KV: KVNamespace;
+  ARENA_OAUTH_CLIENT_ID: string;
+  ARENA_OAUTH_CLIENT_SECRET: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -22,6 +26,9 @@ app.get("/", (c) => {
     docs: "https://github.com/aredotna/mcp",
   });
 });
+
+// OAuth 2.1 routes (metadata, DCR, authorize, callback, token)
+app.route("/", oauthRoutes);
 
 function extractBearerToken(request: Request): string | undefined {
   const header = request.headers.get("Authorization");

@@ -6,16 +6,24 @@ MCP server for the [Are.na](https://www.are.na) API. Provides 30+ auto-generated
 
 The hosted server is available at `https://mcp.are.na/mcp`.
 
-You'll need an Are.na personal access token — get one from [are.na/settings/personal-access-tokens](https://www.are.na/settings/personal-access-tokens).
+### Claude Desktop (connector)
 
-### Claude Desktop (remote)
+The easiest way to connect. Go to **Settings > Connectors > Add custom connector** and enter:
 
-If your version of Claude Desktop supports the `url` format:
+- **Name**: `Are.na`
+- **Remote MCP server URL**: `https://mcp.are.na/mcp`
+
+Leave the OAuth Client ID and Secret fields blank — the server supports Dynamic Client Registration. Click **Add**, then authorize with your Are.na account when prompted.
+
+### Claude Desktop (config file)
+
+You can also add the server directly in `claude_desktop_config.json`. If your version supports the `url` format:
 
 ```json
 {
   "mcpServers": {
     "arena": {
+      "type": "http",
       "url": "https://mcp.are.na/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_ARENA_TOKEN"
@@ -24,6 +32,8 @@ If your version of Claude Desktop supports the `url` format:
   }
 }
 ```
+
+Get a personal access token from [are.na/settings/personal-access-tokens](https://www.are.na/settings/personal-access-tokens).
 
 If your version only supports `command` (stdio), you can use [mcp-proxy](https://github.com/sparfenyuk/mcp-proxy) to bridge to the remote server. Install [uv](https://docs.astral.sh/uv/) first (`brew install uv`), then:
 
@@ -68,6 +78,14 @@ To run the server locally via stdio, clone the repo, run `yarn install && yarn g
 
 > **Note:** You must use absolute paths for both `command` and `args`. Claude Desktop does not reliably resolve relative paths or respect `cwd`. Using `yarn dev` or bare `npx tsx` will not work — `yarn` writes to stdout, and `npx` without a cwd cannot find the script.
 
+### Claude Code
+
+```bash
+claude mcp add --transport http arena https://mcp.are.na/mcp
+```
+
+Authenticate via `/mcp` when prompted.
+
 ### Cursor
 
 Add the server under **Settings > MCP Servers** with URL `https://mcp.are.na/mcp` and an `Authorization: Bearer YOUR_ARENA_TOKEN` header.
@@ -93,9 +111,24 @@ ARENA_ACCESS_TOKEN=your-token yarn dev
 
 ```bash
 cp .dev.vars.example .dev.vars
-# Set your personal access token in .dev.vars
+# Set your tokens in .dev.vars (see .dev.vars.example)
 yarn dev:http
 ```
+
+The HTTP server requires a KV namespace for OAuth state. For local development, Wrangler provides an in-memory KV automatically. For production, create a KV namespace and update the `id` in `wrangler.toml` (KV is included in Cloudflare's free tier):
+
+```bash
+npx wrangler kv namespace create OAUTH_KV
+```
+
+You also need to set the Are.na OAuth application credentials as secrets:
+
+```bash
+npx wrangler secret put ARENA_OAUTH_CLIENT_ID
+npx wrangler secret put ARENA_OAUTH_CLIENT_SECRET
+```
+
+Register your OAuth application at [are.na/oauth/applications](https://www.are.na/oauth/applications) with redirect URI `https://mcp.are.na/callback` (or `http://127.0.0.1:8787/callback` for local dev).
 
 ### Testing
 
