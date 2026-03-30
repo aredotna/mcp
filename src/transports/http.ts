@@ -36,7 +36,14 @@ function extractBearerToken(request: Request): string | undefined {
   return header.slice(7);
 }
 
-app.all("/mcp", async (c) => {
+app.get("/mcp", (c) => {
+  return c.json(
+    { error: "Method Not Allowed", message: "Use POST for MCP requests" },
+    405,
+  );
+});
+
+app.post("/mcp", async (c) => {
   const token = extractBearerToken(c.req.raw) ?? c.env.ARENA_ACCESS_TOKEN;
 
   if (!token) {
@@ -60,6 +67,10 @@ app.all("/mcp", async (c) => {
   await server.connect(transport);
 
   return transport.handleRequest(c.req.raw, { authInfo });
+});
+
+app.delete("/mcp", async (c) => {
+  return c.json({ message: "Session ended" }, 200);
 });
 
 export default app;
