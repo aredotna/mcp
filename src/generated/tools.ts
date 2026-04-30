@@ -61,17 +61,10 @@ export function registerGeneratedTools(server: McpServer): void {
           .string()
           .optional()
           .describe("Alt text for images (accessibility)"),
-        channel_ids: z
-          .array(z.union([z.number().int(), z.string()]))
-          .min(1)
-          .max(20),
-        insert_at: z
-          .number()
-          .int()
+        metadata: z
+          .record(z.unknown())
           .optional()
-          .describe(
-            "Position to insert the block in the channel.\nOnly valid when connecting to a single channel.\n",
-          ),
+          .describe("Custom key-value metadata to set on the new block."),
       },
     },
     async (args: Record<string, unknown>, extra) => {
@@ -84,8 +77,7 @@ export function registerGeneratedTools(server: McpServer): void {
             original_source_url: args["original_source_url"],
             original_source_title: args["original_source_title"],
             alt_text: args["alt_text"],
-            channel_ids: args["channel_ids"],
-            insert_at: args["insert_at"],
+            metadata: args["metadata"],
           },
         } as any);
         if (error) return errorResult(error);
@@ -132,6 +124,10 @@ export function registerGeneratedTools(server: McpServer): void {
                 .string()
                 .optional()
                 .describe("Alt text for images (accessibility)"),
+              metadata: z
+                .record(z.unknown())
+                .optional()
+                .describe("Custom key-value metadata to set on the new block."),
             }),
           )
           .min(1)
@@ -218,6 +214,12 @@ export function registerGeneratedTools(server: McpServer): void {
           .string()
           .optional()
           .describe("Alt text for images (for Image blocks)"),
+        metadata: z
+          .record(z.unknown())
+          .optional()
+          .describe(
+            "Custom key-value metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n",
+          ),
       },
     },
     async (args: Record<string, unknown>, extra) => {
@@ -231,6 +233,7 @@ export function registerGeneratedTools(server: McpServer): void {
             description: args["description"],
             content: args["content"],
             alt_text: args["alt_text"],
+            metadata: args["metadata"],
           },
         } as any);
         if (error) return errorResult(error);
@@ -388,6 +391,10 @@ export function registerGeneratedTools(server: McpServer): void {
           .describe(
             "Group ID to create the channel under. The authenticated user must be a member of the group.\nIf not provided, the channel is owned by the authenticated user.\n",
           ),
+        metadata: z
+          .record(z.unknown())
+          .optional()
+          .describe("Custom key-value metadata to set on the new channel."),
       },
     },
     async (args: Record<string, unknown>, extra) => {
@@ -398,6 +405,7 @@ export function registerGeneratedTools(server: McpServer): void {
             visibility: args["visibility"],
             description: args["description"],
             group_id: args["group_id"],
+            metadata: args["metadata"],
           },
         } as any);
         if (error) return errorResult(error);
@@ -443,6 +451,12 @@ export function registerGeneratedTools(server: McpServer): void {
           .describe(
             "Channel description (supports markdown). Pass null to clear.",
           ),
+        metadata: z
+          .record(z.unknown())
+          .optional()
+          .describe(
+            "Custom key-value metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n",
+          ),
       },
     },
     async (args: Record<string, unknown>, extra) => {
@@ -455,6 +469,7 @@ export function registerGeneratedTools(server: McpServer): void {
             title: args["title"],
             visibility: args["visibility"],
             description: args["description"],
+            metadata: args["metadata"],
           },
         } as any);
         if (error) return errorResult(error);
@@ -497,17 +512,6 @@ export function registerGeneratedTools(server: McpServer): void {
         connectable_type: z
           .enum(["Block", "Channel"])
           .describe("Type of the connectable."),
-        channel_ids: z
-          .array(z.union([z.number().int(), z.string()]))
-          .min(1)
-          .max(20),
-        position: z
-          .number()
-          .int()
-          .optional()
-          .describe(
-            "Position to insert at within the channel. Only valid\nwhen connecting to a single channel.\n",
-          ),
       },
     },
     async (args: Record<string, unknown>, extra) => {
@@ -516,8 +520,6 @@ export function registerGeneratedTools(server: McpServer): void {
           body: {
             connectable_id: args["connectable_id"],
             connectable_type: args["connectable_type"],
-            channel_ids: args["channel_ids"],
-            position: args["position"],
           },
         } as any);
         if (error) return errorResult(error);
@@ -541,6 +543,34 @@ export function registerGeneratedTools(server: McpServer): void {
           params: {
             path: { id: args["id"] },
           },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "updateConnection",
+    {
+      description: "Update a connection — Updates a connection's metadata.",
+      inputSchema: {
+        id: z.number().int().describe("Resource ID"),
+        metadata: z
+          .record(z.unknown())
+          .optional()
+          .describe(
+            "Custom key-value metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n",
+          ),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.PUT("/v3/connections/{id}", {
+          params: {
+            path: { id: args["id"] },
+          },
+          body: { metadata: args["metadata"] },
         } as any);
         if (error) return errorResult(error);
         return textResult(data);
@@ -590,7 +620,9 @@ export function registerGeneratedTools(server: McpServer): void {
           .number()
           .int()
           .optional()
-          .describe("Target position (required when movement is insert_at)"),
+          .describe(
+            "Target position, 1-indexed (required when movement is insert_at)",
+          ),
       },
     },
     async (args: Record<string, unknown>, extra) => {

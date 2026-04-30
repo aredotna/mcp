@@ -430,6 +430,32 @@
         },
         "required": ["id", "type", "name", "slug", "avatar", "initials"]
       },
+      "Metadata": {
+        "type": "object",
+        "description": "Arbitrary key-value pairs stored on an entity.\nKeys are alphanumeric/underscore, max 40 characters.\nValues are scalars (string, number, boolean). Max 50 keys, 32KB total.\n",
+        "additionalProperties": {
+          "oneOf": [
+            { "type": "string", "maxLength": 2000 },
+            { "type": "number" },
+            { "type": "boolean" }
+          ]
+        },
+        "maxProperties": 50,
+        "example": { "status": "reviewed", "score": 0.95, "featured": true }
+      },
+      "MetadataInput": {
+        "type": "object",
+        "description": "Arbitrary key-value pairs to set on an entity. Uses merge semantics:\nnew keys are added, existing keys are updated, keys set to null are removed.\nKeys must be alphanumeric/underscore, max 40 characters.\nValues must be scalars (string, number, boolean) or null (to delete). Max 50 keys, 32KB total.\n",
+        "additionalProperties": {
+          "oneOf": [
+            { "type": "string", "maxLength": 2000 },
+            { "type": "number" },
+            { "type": "boolean" },
+            { "type": "null" }
+          ]
+        },
+        "maxProperties": 50
+      },
       "EmbeddedConnection": {
         "type": "object",
         "description": "Embedded connection representation used when connection is nested in other resources",
@@ -441,13 +467,20 @@
           },
           "position": {
             "type": "integer",
-            "description": "Position of the item within the channel",
+            "description": "Position of the item within the channel (1-indexed)",
             "example": 1
           },
           "pinned": {
             "type": "boolean",
             "description": "Whether the item is pinned",
             "example": false
+          },
+          "metadata": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/Metadata" },
+              { "type": "null" }
+            ],
+            "description": "Custom key-value metadata"
           },
           "connected_at": {
             "type": "string",
@@ -889,6 +922,25 @@
         "maxItems": 20,
         "example": [123, "my-channel"]
       },
+      "ConnectTo": {
+        "type": "object",
+        "description": "A channel to connect to, with optional position and connection metadata.\n",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "oneOf": [{ "type": "integer" }, { "type": "string" }],
+            "description": "Channel ID or slug."
+          },
+          "position": {
+            "type": "integer",
+            "description": "Position to insert at within this channel (1-indexed)."
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata",
+            "description": "Connection metadata for this specific connection."
+          }
+        }
+      },
       "PresignedFile": {
         "type": "object",
         "description": "A presigned S3 upload URL for a single file",
@@ -963,6 +1015,10 @@
             "type": "string",
             "description": "Alt text for images (accessibility)",
             "example": "Beige flags"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata",
+            "description": "Custom key-value metadata to set on the new block."
           }
         },
         "required": ["value"]
@@ -1147,6 +1203,13 @@
             "example": "2023-01-15T14:45:00Z"
           },
           "user": { "$ref": "#/components/schemas/EmbeddedUser" },
+          "metadata": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/Metadata" },
+              { "type": "null" }
+            ],
+            "description": "Custom key-value metadata"
+          },
           "source": {
             "oneOf": [
               { "$ref": "#/components/schemas/BlockSource" },
@@ -1684,6 +1747,13 @@
             "format": "date-time",
             "description": "When the channel was last updated",
             "example": "2023-01-15T14:45:00Z"
+          },
+          "metadata": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/Metadata" },
+              { "type": "null" }
+            ],
+            "description": "Custom key-value metadata"
           },
           "owner": { "$ref": "#/components/schemas/ChannelOwner" },
           "counts": { "$ref": "#/components/schemas/ChannelCounts" },
@@ -2366,7 +2436,7 @@
     "/v3/blocks": {
       "post": {
         "summary": "Create a block",
-        "description": "Creates a new block and connects it to one or more channels.\n\nThe `value` field accepts either a URL or text content:\n- If `value` is a valid URL, the block type is inferred (Image, Link, Embed, etc.)\n- If `value` is plain text, a Text block is created\n\nYou can connect the block to multiple channels at once (up to 20).\n\n**Authentication required.**\n",
+        "description": "Creates a new block and connects it to one or more channels.\n\nThe `value` field accepts either a URL or text content:\n- If `value` is a valid URL, the block type is inferred (Image, Link, Embed, etc.)\n- If `value` is plain text, a Text block is created\n\nYou can connect the block to multiple channels at once (up to 20).\n\nSpecify target channels using either `channels` (preferred) or `channel_ids` (legacy), but not both.\nThe `channels` form allows per-channel position and connection metadata.\n\n**Authentication required.**\n",
         "operationId": "createBlock",
         "tags": ["Blocks"],
         "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
@@ -2378,40 +2448,74 @@
                 "allOf": [
                   { "$ref": "#/components/schemas/BlockInput" },
                   {
-                    "type": "object",
-                    "properties": {
-                      "channel_ids": {
-                        "$ref": "#/components/schemas/ChannelIds"
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "description": "Legacy form: flat channel_ids array",
+                        "properties": {
+                          "channel_ids": {
+                            "$ref": "#/components/schemas/ChannelIds"
+                          },
+                          "insert_at": {
+                            "type": "integer",
+                            "description": "Position to insert the block in the channel (1-indexed).\nOnly valid when connecting to a single channel.\n",
+                            "example": 1
+                          }
+                        },
+                        "required": ["channel_ids"],
+                        "not": { "required": ["channels"] }
                       },
-                      "insert_at": {
-                        "type": "integer",
-                        "description": "Position to insert the block in the channel.\nOnly valid when connecting to a single channel.\n",
-                        "example": 0
+                      {
+                        "type": "object",
+                        "description": "Structured form: per-channel position and connection metadata",
+                        "properties": {
+                          "channels": {
+                            "type": "array",
+                            "description": "Target channels with optional per-channel position and connection metadata.",
+                            "items": {
+                              "$ref": "#/components/schemas/ConnectTo"
+                            },
+                            "minItems": 1,
+                            "maxItems": 20
+                          }
+                        },
+                        "required": ["channels"],
+                        "not": {
+                          "anyOf": [
+                            { "required": ["channel_ids"] },
+                            { "required": ["insert_at"] }
+                          ]
+                        }
                       }
-                    },
-                    "required": ["channel_ids"]
+                    ]
                   }
                 ]
               },
               "examples": {
                 "text_block": {
-                  "summary": "Create a text block",
+                  "summary": "Create a text block (legacy)",
                   "value": {
                     "value": "This is a **text** block with markdown",
                     "channel_ids": [123],
                     "title": "My Text Block"
                   }
                 },
-                "image_block": {
-                  "summary": "Create an image block from URL",
+                "with_channels": {
+                  "summary": "Create with per-channel metadata",
                   "value": {
                     "value": "https://example.com/image.jpg",
-                    "channel_ids": [123, 456],
-                    "alt_text": "A beautiful landscape"
+                    "channels": [
+                      {
+                        "id": 123,
+                        "position": 1,
+                        "metadata": { "source": "import" }
+                      },
+                      { "id": 456 }
+                    ]
                   }
                 },
                 "link_block": {
-                  "summary": "Create a link block",
+                  "summary": "Create a link block (legacy)",
                   "value": {
                     "value": "https://example.com/article",
                     "channel_ids": [123],
@@ -2615,6 +2719,10 @@
                     "type": "string",
                     "description": "Alt text for images (for Image blocks)",
                     "example": "A descriptive alt text for accessibility"
+                  },
+                  "metadata": {
+                    "$ref": "#/components/schemas/MetadataInput",
+                    "description": "Custom key-value metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n"
                   }
                 }
               }
@@ -2802,6 +2910,10 @@
                     "type": "integer",
                     "description": "Group ID to create the channel under. The authenticated user must be a member of the group.\nIf not provided, the channel is owned by the authenticated user.\n",
                     "example": 12345
+                  },
+                  "metadata": {
+                    "$ref": "#/components/schemas/Metadata",
+                    "description": "Custom key-value metadata to set on the new channel."
                   }
                 }
               },
@@ -2897,6 +3009,10 @@
                     "type": ["string", "null"],
                     "description": "Channel description (supports markdown). Pass null to clear.",
                     "example": "Updated description"
+                  },
+                  "metadata": {
+                    "$ref": "#/components/schemas/MetadataInput",
+                    "description": "Custom key-value metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n"
                   }
                 }
               },
@@ -2960,7 +3076,7 @@
       "post": {
         "summary": "Create a connection",
         "operationId": "createConnection",
-        "description": "Connects a block or channel to one or more channels.\nReturns the created connection(s).\n\n**Authentication required.**\n",
+        "description": "Connects a block or channel to one or more channels.\nReturns the created connection(s).\n\nSpecify target channels using either `channels` (preferred) or `channel_ids` (legacy), but not both.\nThe `channels` form allows per-channel position and connection metadata.\n\n**Authentication required.**\n",
         "tags": ["Connections"],
         "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
         "requestBody": {
@@ -2968,27 +3084,63 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": [
-                  "connectable_id",
-                  "connectable_type",
-                  "channel_ids"
-                ],
-                "properties": {
-                  "connectable_id": {
-                    "type": "integer",
-                    "description": "ID of the block or channel to connect."
+                "allOf": [
+                  {
+                    "type": "object",
+                    "required": ["connectable_id", "connectable_type"],
+                    "properties": {
+                      "connectable_id": {
+                        "type": "integer",
+                        "description": "ID of the block or channel to connect."
+                      },
+                      "connectable_type": {
+                        "$ref": "#/components/schemas/ConnectableType",
+                        "description": "Type of the connectable."
+                      }
+                    }
                   },
-                  "connectable_type": {
-                    "$ref": "#/components/schemas/ConnectableType",
-                    "description": "Type of the connectable."
-                  },
-                  "channel_ids": { "$ref": "#/components/schemas/ChannelIds" },
-                  "position": {
-                    "type": "integer",
-                    "description": "Position to insert at within the channel. Only valid\nwhen connecting to a single channel.\n"
+                  {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "description": "Legacy form: flat channel_ids array",
+                        "properties": {
+                          "channel_ids": {
+                            "$ref": "#/components/schemas/ChannelIds"
+                          },
+                          "position": {
+                            "type": "integer",
+                            "description": "Position to insert at within the channel (1-indexed).\nOnly valid when connecting to a single channel.\n"
+                          }
+                        },
+                        "required": ["channel_ids"],
+                        "not": { "required": ["channels"] }
+                      },
+                      {
+                        "type": "object",
+                        "description": "Structured form: per-channel position and connection metadata",
+                        "properties": {
+                          "channels": {
+                            "type": "array",
+                            "description": "Target channels with optional per-channel position and connection metadata.",
+                            "items": {
+                              "$ref": "#/components/schemas/ConnectTo"
+                            },
+                            "minItems": 1,
+                            "maxItems": 20
+                          }
+                        },
+                        "required": ["channels"],
+                        "not": {
+                          "anyOf": [
+                            { "required": ["channel_ids"] },
+                            { "required": ["position"] }
+                          ]
+                        }
+                      }
+                    ]
                   }
-                }
+                ]
               }
             }
           }
@@ -3043,6 +3195,48 @@
           "429": { "$ref": "#/components/responses/RateLimitResponse" }
         }
       },
+      "put": {
+        "summary": "Update a connection",
+        "description": "Updates a connection's metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n\n**Authentication required.**\n",
+        "operationId": "updateConnection",
+        "tags": ["Connections"],
+        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
+        "parameters": [{ "$ref": "#/components/parameters/IdParam" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "metadata": {
+                    "$ref": "#/components/schemas/MetadataInput",
+                    "description": "Custom key-value metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Connection updated successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Connection" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationErrorResponse" },
+          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
+          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
+          "404": { "$ref": "#/components/responses/NotFoundResponse" },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntityResponse"
+          },
+          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+        }
+      },
       "delete": {
         "summary": "Delete a connection",
         "description": "Removes a block or channel from a channel by deleting the connection.\nThe block/channel itself is not deleted - it may still exist in other channels.\n\n**Authentication required.**\n",
@@ -3080,7 +3274,7 @@
                   },
                   "position": {
                     "type": "integer",
-                    "description": "Target position (required when movement is insert_at)"
+                    "description": "Target position, 1-indexed (required when movement is insert_at)"
                   }
                 }
               }
