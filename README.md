@@ -86,6 +86,28 @@ claude mcp add --transport http arena https://mcp.are.na/mcp
 
 Authenticate via `/mcp` when prompted.
 
+### Codex
+
+In Codex, open **Settings > MCP servers > Add custom MCP**.
+
+Use the hosted server with OAuth, the same as the Claude connector flow. Select **Streamable HTTP** and enter:
+
+- **Name**: `Are.na`
+- **URL**: `https://mcp.are.na/mcp`
+
+Leave environment variables and passthrough blank. Save the server, then authorize with your Are.na account when prompted. The server supports Dynamic Client Registration, so you do not need to create or paste an OAuth client ID or secret.
+
+If you need to run the server locally over stdio instead, clone the repo, run `yarn install && yarn generate`, then add a custom MCP with:
+
+- **Name**: `Are.na`
+- **Transport**: `STDIO`
+- **Command to launch**: `/path/to/arena/mcp/node_modules/.bin/tsx`
+- **Arguments**: `/path/to/arena/mcp/src/transports/stdio.ts`
+- **Environment variables**: `ARENA_ACCESS_TOKEN` = `YOUR_ARENA_TOKEN`
+- **Working directory**: `/path/to/arena/mcp`
+
+Use absolute paths for the command, argument, and working directory. The local stdio server uses a personal access token instead of OAuth; get one from [are.na/settings/personal-access-tokens](https://www.are.na/settings/personal-access-tokens).
+
 ### Cursor
 
 Add the server under **Settings > MCP Servers** with URL `https://mcp.are.na/mcp` and an `Authorization: Bearer YOUR_ARENA_TOKEN` header.
