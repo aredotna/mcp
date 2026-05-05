@@ -7,6 +7,7 @@
  */
 
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { OAuthStore } from "./store";
 import { generateId, verifyPkce } from "./crypto";
 
@@ -20,6 +21,31 @@ interface OAuthEnv {
 }
 
 export const oauthRoutes = new Hono<{ Bindings: OAuthEnv }>();
+
+function protectedResourceMetadata(c: Context<{ Bindings: OAuthEnv }>) {
+  const origin = new URL(c.req.url).origin;
+
+  return c.json({
+    resource: `${origin}/mcp`,
+    authorization_servers: [origin],
+    bearer_methods_supported: ["header"],
+    scopes_supported: ["read", "write"],
+    resource_name: "Are.na MCP",
+    resource_documentation: "https://github.com/aredotna/mcp",
+  });
+}
+
+/**
+ * RFC 9728 — Protected Resource Metadata
+ */
+oauthRoutes.get(
+  "/.well-known/oauth-protected-resource",
+  protectedResourceMetadata,
+);
+oauthRoutes.get(
+  "/.well-known/oauth-protected-resource/mcp",
+  protectedResourceMetadata,
+);
 
 /**
  * RFC 8414 — Authorization Server Metadata

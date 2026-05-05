@@ -60,6 +60,9 @@ describe("HTTP transport auth", () => {
     );
     const res = await app.fetch(req, makeEnv());
     expect(res.status).toBe(401);
+    expect(res.headers.get("WWW-Authenticate")).toBe(
+      'Bearer realm="mcp", resource_metadata="http://localhost/.well-known/oauth-protected-resource"',
+    );
     const data = (await res.json()) as { error: string };
     expect(data.error).toBe("Unauthorized");
   });
@@ -72,6 +75,27 @@ describe("HTTP transport auth", () => {
 });
 
 describe("OAuth metadata", () => {
+  it("returns protected resource metadata", async () => {
+    const req = makeRequest("GET", "/.well-known/oauth-protected-resource");
+    const res = await app.fetch(req, makeEnv());
+    expect(res.status).toBe(200);
+
+    const data = (await res.json()) as Record<string, unknown>;
+    expect(data.resource).toBe("http://localhost/mcp");
+    expect(data.authorization_servers).toEqual(["http://localhost"]);
+    expect(data.bearer_methods_supported).toEqual(["header"]);
+    expect(data.scopes_supported).toEqual(["read", "write"]);
+  });
+
+  it("returns protected resource metadata for the mcp path", async () => {
+    const req = makeRequest("GET", "/.well-known/oauth-protected-resource/mcp");
+    const res = await app.fetch(req, makeEnv());
+    expect(res.status).toBe(200);
+
+    const data = (await res.json()) as Record<string, unknown>;
+    expect(data.resource).toBe("http://localhost/mcp");
+  });
+
   it("returns authorization server metadata", async () => {
     const req = makeRequest("GET", "/.well-known/oauth-authorization-server");
     const res = await app.fetch(req, makeEnv());

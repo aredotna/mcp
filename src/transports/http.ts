@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { cors } from "hono/cors";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
@@ -36,7 +37,21 @@ function extractBearerToken(request: Request): string | undefined {
   return header.slice(7);
 }
 
+function unauthorized(c: Context<{ Bindings: Env }>) {
+  const origin = new URL(c.req.url).origin;
+  return c.json(
+    { error: "Unauthorized", message: "Bearer token required" },
+    401,
+    {
+      "WWW-Authenticate": `Bearer realm="mcp", resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
+    },
+  );
+}
+
 app.get("/mcp", (c) => {
+  const token = extractBearerToken(c.req.raw) ?? c.env.ARENA_ACCESS_TOKEN;
+  if (!token) return unauthorized(c);
+
   return c.json(
     { error: "Method Not Allowed", message: "Use POST for MCP requests" },
     405,
@@ -47,10 +62,7 @@ app.post("/mcp", async (c) => {
   const token = extractBearerToken(c.req.raw) ?? c.env.ARENA_ACCESS_TOKEN;
 
   if (!token) {
-    return c.json(
-      { error: "Unauthorized", message: "Bearer token required" },
-      401,
-    );
+    return unauthorized(c);
   }
 
   const authInfo: AuthInfo = {
