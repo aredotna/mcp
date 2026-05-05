@@ -86,16 +86,16 @@ claude mcp add --transport http arena https://mcp.are.na/mcp
 
 Authenticate via `/mcp` when prompted.
 
-### Codex
+### Codex Desktop
 
-In Codex, open **Settings > MCP servers > Add custom MCP**.
+In the Codex desktop app, open **Settings > MCP servers > Add custom MCP**.
 
 Use the hosted server with OAuth, the same as the Claude connector flow. Select **Streamable HTTP** and enter:
 
 - **Name**: `Are.na`
 - **URL**: `https://mcp.are.na/mcp`
 
-Leave environment variables and passthrough blank. Save the server, then authorize with your Are.na account when prompted. The server supports Dynamic Client Registration, so you do not need to create or paste an OAuth client ID or secret.
+Leave environment variables and passthrough blank. Save the server, then click **Authenticate** from the MCP server settings when it appears. The server supports Dynamic Client Registration, so you do not need to create or paste an OAuth client ID or secret.
 
 If you need to run the server locally over stdio instead, clone the repo, run `yarn install && yarn generate`, then add a custom MCP with:
 
@@ -107,6 +107,23 @@ If you need to run the server locally over stdio instead, clone the repo, run `y
 - **Working directory**: `/path/to/arena/mcp`
 
 Use absolute paths for the command, argument, and working directory. The local stdio server uses a personal access token instead of OAuth; get one from [are.na/settings/personal-access-tokens](https://www.are.na/settings/personal-access-tokens).
+
+### Codex CLI
+
+Codex CLI stores MCP servers in `~/.codex/config.toml`. Add the hosted server:
+
+```toml
+[mcp_servers.arena]
+url = "https://mcp.are.na/mcp"
+```
+
+Then authenticate it:
+
+```bash
+codex mcp login arena
+```
+
+You can check the configured server from the Codex TUI with `/mcp`.
 
 ### Cursor
 
