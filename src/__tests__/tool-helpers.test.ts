@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   textResult,
+  dataResult,
   errorResult,
   requireAuth,
   AuthRequiredError,
@@ -15,6 +16,25 @@ describe("textResult", () => {
       text: JSON.stringify({ id: 1, title: "test" }, null, 2),
     });
     expect(result.isError).toBeUndefined();
+  });
+
+  it("exposes object data as structured content", () => {
+    const data = { id: 1, title: "test" };
+    const result = textResult(data);
+    expect(result.structuredContent).toEqual(data);
+  });
+});
+
+describe("dataResult", () => {
+  it("wraps raw API payloads under data for generated tool output schemas", () => {
+    const result = dataResult({ id: 1 });
+    expect(result.structuredContent).toEqual({ data: { id: 1 } });
+  });
+
+  it("uses null structured data for endpoints with no JSON body", () => {
+    const result = dataResult(undefined);
+    expect(result.content[0]).toEqual({ type: "text", text: "null" });
+    expect(result.structuredContent).toEqual({ data: null });
   });
 });
 

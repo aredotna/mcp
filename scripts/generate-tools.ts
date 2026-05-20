@@ -253,7 +253,7 @@ function generateHandler(tool: ToolDef): string {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.${tool.method}(${pathType}${optionsStr});
         if (error) return errorResult(error);
-        return textResult(data);
+        return dataResult(data);
       }).catch((err) => errorResult(err.message));
     }`;
 }
@@ -292,7 +292,7 @@ function main() {
     `import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";`,
   );
   lines.push(
-    `import { withArenaClient, textResult, errorResult } from "../lib/tool-helpers";`,
+    `import { withArenaClient, dataResult, errorResult } from "../lib/tool-helpers";`,
   );
   lines.push(``);
   lines.push(
@@ -314,6 +314,11 @@ function main() {
     lines.push(`    {`);
     lines.push(`      description: ${JSON.stringify(desc)},`);
     lines.push(`      inputSchema: ${schemaInner},`);
+    lines.push(`      outputSchema: {`);
+    lines.push(
+      `        data: z.unknown().describe("Raw Are.na API response payload for this endpoint. Null when the endpoint returns no JSON body."),`,
+    );
+    lines.push(`      },`);
     lines.push(`    },`);
     lines.push(generateHandler(tool));
     lines.push(`  );`);

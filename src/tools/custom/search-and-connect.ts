@@ -47,6 +47,27 @@ export function registerSearchAndConnect(server: McpServer): void {
           .optional()
           .describe("Maximum number of results to connect (default 5)"),
       },
+      outputSchema: {
+        query: z.string(),
+        target_channel: z.string(),
+        found: z.number().int(),
+        connected: z.number().int(),
+        skipped: z
+          .array(
+            z.object({
+              id: z.number().int(),
+              class: z.string().optional(),
+            }),
+          )
+          .optional(),
+        errors: z.array(z.string()).optional(),
+        items: z.array(
+          z.object({
+            id: z.number().int(),
+            type: z.string(),
+          }),
+        ),
+      },
     },
     async (args, extra) => {
       return withArenaClient(extra, async (client) => {

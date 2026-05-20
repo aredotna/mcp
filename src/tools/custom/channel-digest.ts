@@ -59,6 +59,48 @@ export function registerChannelDigest(server: McpServer): void {
             "Number of recent items to sample for type breakdown (default 100, max 100)",
           ),
       },
+      outputSchema: {
+        channel: z.object({
+          id: z.number().int(),
+          title: z.string(),
+          slug: z.string(),
+          visibility: z.string(),
+          description: z.string().nullable(),
+          created_at: z.string(),
+          updated_at: z.string(),
+        }),
+        owner: z.object({
+          slug: z.string().optional(),
+          name: z.string().optional(),
+          type: z.string().optional(),
+        }),
+        counts: z.object({
+          blocks: z.number().int(),
+          channels: z.number().int(),
+          contents: z.number().int(),
+          collaborators: z.number().int(),
+        }),
+        collaborators: z
+          .array(
+            z.object({
+              slug: z.string().optional(),
+              name: z.string().optional(),
+              type: z.string().optional(),
+            }),
+          )
+          .optional(),
+        type_breakdown: z.record(z.union([z.number().int(), z.string()])),
+        active_contributors: z.array(z.string()),
+        recent_items: z.array(
+          z.object({
+            id: z.number().int(),
+            type: z.string().optional(),
+            title: z.string().optional(),
+            added: z.string().optional(),
+            added_by: z.string().optional(),
+          }),
+        ),
+      },
     },
     async (args, extra) => {
       return withArenaClient(extra, async (client) => {
