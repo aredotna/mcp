@@ -8,10 +8,20 @@
       "url": "https://www.are.na/about#contact",
       "email": "help@are.na"
     },
-    "description": "The Are.na REST API provides programmatic access to the Are.na platform - a tool for connecting ideas and building knowledge together.\n\n## Getting Started\n\nAll API requests use `https://api.are.na` as the base URL. Responses are JSON with consistent structure including hypermedia links for resource discovery.\n\n## Authentication\n\nMost endpoints work without authentication but provide additional access when authenticated. Use the standard `Authorization` header:\n\n```\nAuthorization: Bearer YOUR_TOKEN\n```\n\n**Supported Token Types:**\n- **OAuth2 Access Token**: Obtained via [OAuth2 flow](https://www.are.na/developers/explore/authentication) (supports PKCE)\n- **Personal Access Token**: From [are.na/settings/oauth](https://www.are.na/settings/personal-access-tokens)\n\nFor OAuth2, note that the authorization endpoint is hosted on the main site (`www.are.na/oauth/authorize`),\nwhile the token endpoint is on the API (`api.are.na/v3/oauth/token`). The authorization endpoint supports\n`read` and `write` scopes (defaulting to `read` if omitted). A typical authorization URL looks like:\n\n```\nhttps://www.are.na/oauth/authorize?client_id=YOUR_CLIENT_ID\u0026redirect_uri=YOUR_REDIRECT_URI\u0026response_type=code\u0026scope=read\n```\n\n**Authentication Levels:**\n- **Public**: No authentication needed (e.g., `/v3/ping`)\n- **Optional**: Works unauthenticated but respects permissions when authenticated\n- **Required**: Returns `401 Unauthorized` without valid token (e.g., `/v3/me`)\n\n## Scopes\n\nOAuth2 tokens and personal access tokens support the following scopes:\n\n| Scope | Description |\n|-------|-------------|\n| `read` | Read-only access (default) — write operations will return `403 Forbidden` |\n| `write` | Full read and write access |\n\nTokens default to `read` scope. Request `write` scope when creating a token or authorizing an OAuth2 application to enable write access. Read-only tokens can view all resources the user has access to but cannot create, update, or delete anything.\n\n## Rate Limiting\n\n**Acceptable Use**: This API is intended for building applications that integrate with Are.na, not for scraping or bulk data collection. Automated crawling, systematic downloading of content, or any form of structured data harvesting is prohibited. If you need bulk access to data for research or other purposes, please [contact us](mailto:help@are.na) to discuss your use case.\n\nRate limits are enforced per-minute based on your tier:\n\n| Tier | Requests/Minute |\n|------|-----------------|\n| Guest (unauthenticated) | 30 |\n| Free | 120 |\n| Premium | 300 |\n| Supporter/Lifetime | 600 |\n\n**Rate Limit Headers** (included in every response):\n- `X-RateLimit-Limit`: Your tier's per-minute limit\n- `X-RateLimit-Tier`: Current tier (guest/free/premium/supporter)\n- `X-RateLimit-Window`: Time window in seconds (always 60)\n- `X-RateLimit-Reset`: Unix timestamp when the limit resets\n\nWhen you exceed limits, you'll receive a `429 Too Many Requests` response with upgrade recommendations and retry timing.\n\n## Request Validation\n\nAll parameters are validated against this OpenAPI specification. Invalid requests return `400 Bad Request` with detailed error messages.\n\n## Error Responses\n\nErrors use standard HTTP status codes with JSON bodies:\n\n```json\n{\n  \"error\": \"Not Found\",\n  \"code\": 404,\n  \"details\": {\n    \"message\": \"The resource you requested does not exist\"\n  }\n}\n```\n\nCommon status codes:\n- `400`: Invalid request parameters\n- `401`: Authentication required or invalid\n- `403`: Insufficient permissions\n- `404`: Resource not found\n- `429`: Rate limit exceeded\n\n## Pagination\n\nList endpoints return paginated results. Use these query parameters:\n- `page`: Page number (default: 1)\n- `per`: Items per page (default: 24, max: 100)\n\nResponses include a `meta` object with pagination info:\n\n```json\n{\n  \"data\": [...],\n  \"meta\": {\n    \"current_page\": 1,\n    \"per_page\": 25,\n    \"total_pages\": 5,\n    \"total_count\": 120,\n    \"next_page\": 2,\n    \"prev_page\": null,\n    \"has_more_pages\": true\n  }\n}\n```\n\n## Best Practices\n\nAre.na channels and users can contain thousands of items. The following guidelines will help you build responsive, well-behaved integrations.\n\n### Paginate, Don't Enumerate\n\nNever try to load an entire channel or user's content in one pass. Use `page` and `per` parameters to fetch only the data you need right now. Check `meta.has_more_pages` and load subsequent pages on demand rather than in a loop.\n\n**Do:**\n- Fetch the first page and display it immediately\n- Load more pages as the user scrolls or explicitly requests them\n\n**Don't:**\n- Loop through all pages at startup to \"build a complete picture\"\n- Set `per=100` and iterate until `has_more_pages` is `false`\n\n### Use HTTP Caching\n\nAll responses include `Cache-Control` and `ETag` headers. Unauthenticated responses are `max-age=300, public` — your client can reuse them for 5 minutes without any network request. Authenticated responses are `private, no-cache` — your client may store them but must revalidate before each reuse.\n\nTo revalidate, send the `ETag` value from a previous response as `If-None-Match`:\n\n```\nGET /v3/channels/123\nIf-None-Match: \"abc123\"\n```\n\nIf the resource hasn't changed, the API returns `304 Not Modified` with no body, saving bandwidth. Single-resource endpoints (e.g., `/v3/channels/:id`, `/v3/blocks/:id`) also skip server-side work entirely on a match. Note that 304 responses still count against your rate limit.\n\n### Fetch Summaries Before Details\n\nStart with lightweight list endpoints (e.g., a channel's first page of contents) before drilling into individual blocks or nested resources. Avoid eagerly resolving every connection or nested object — fetch details only when a user explicitly needs them.\n\n### Respect Rate Limits Gracefully\n\nMonitor the `X-RateLimit-Limit` and `X-RateLimit-Reset` headers. If you receive a `429` response, wait until the reset window before retrying — don't retry in a tight loop. Consider adding exponential backoff and a short delay between sequential requests (e.g., 200–500ms) when making multiple calls.\n\n### Design for Partial Data\n\nChannels can have tens of thousands of connections. Your application should function well with just the first page of results, not require the full dataset upfront. Display what you have and offer the user a way to load more.\n\n### Build Statically When Possible\n\nIf you're building a website that displays Are.na content, prefer static site generation (fetching data at build time) over live API requests on every page view. This eliminates rate limit concerns for your visitors and makes your site faster and more resilient. If you need fresher data, cache responses server-side with a reasonable TTL rather than proxying every request through to the API.\n\n### Avoid Write-Heavy Loops\n\nIf you're creating or connecting multiple blocks, batch your logic and add delays between write operations. Rapid-fire mutations can hit rate limits quickly and may trigger abuse detection.\n"
+    "description": "The Are.na REST API provides programmatic access to the Are.na platform - a tool for connecting ideas and building knowledge together.\n\n## Getting Started\n\nAll API requests use `https://api.are.na` as the base URL. Responses are JSON with consistent structure including hypermedia links for resource discovery.\n\n## Authentication\n\nMost endpoints work without authentication but provide additional access when authenticated. Use the standard `Authorization` header:\n\n```\nAuthorization: Bearer YOUR_TOKEN\n```\n\n**Supported Token Types:**\n- **OAuth2 Access Token**: Obtained via [OAuth2 flow](https://www.are.na/developers/explore/authentication) (supports PKCE)\n- **Personal Access Token**: From [are.na/settings/oauth](https://www.are.na/settings/personal-access-tokens)\n\nFor OAuth2, note that the authorization endpoint is hosted on the main site (`www.are.na/oauth/authorize`),\nwhile the token endpoint is on the API (`api.are.na/v3/oauth/token`). The authorization endpoint supports\n`read` and `write` scopes (defaulting to `read` if omitted). A typical authorization URL looks like:\n\n```\nhttps://www.are.na/oauth/authorize?client_id=YOUR_CLIENT_ID&redirect_uri=YOUR_REDIRECT_URI&response_type=code&scope=read\n```\n\n**Authentication Levels:**\n- **Public**: No authentication needed (e.g., `/v3/ping`)\n- **Optional**: Works unauthenticated but respects permissions when authenticated\n- **Required**: Returns `401 Unauthorized` without valid token (e.g., `/v3/me`)\n\n## Scopes\n\nOAuth2 tokens and personal access tokens support the following scopes:\n\n| Scope | Description |\n|-------|-------------|\n| `read` | Read-only access (default) — write operations will return `403 Forbidden` |\n| `write` | Full read and write access |\n\nTokens default to `read` scope. Request `write` scope when creating a token or authorizing an OAuth2 application to enable write access. Read-only tokens can view all resources the user has access to but cannot create, update, or delete anything.\n\n## Rate Limiting\n\n**Acceptable Use**: This API is intended for building applications that integrate with Are.na, not for scraping or bulk data collection. Automated crawling, systematic downloading of content, or any form of structured data harvesting is prohibited. If you need bulk access to data for research or other purposes, please [contact us](mailto:help@are.na) to discuss your use case.\n\nRate limits are enforced per-minute based on your tier:\n\n| Tier | Requests/Minute |\n|------|-----------------|\n| Guest (unauthenticated) | 30 |\n| Free | 120 |\n| Premium | 300 |\n| Supporter/Lifetime | 600 |\n\n**Rate Limit Headers** (included in every response):\n- `X-RateLimit-Limit`: Your tier's per-minute limit\n- `X-RateLimit-Tier`: Current tier (guest/free/premium/supporter)\n- `X-RateLimit-Window`: Time window in seconds (always 60)\n- `X-RateLimit-Reset`: Unix timestamp when the limit resets\n\nWhen you exceed limits, you'll receive a `429 Too Many Requests` response with upgrade recommendations and retry timing.\n\n## Request Validation\n\nAll parameters are validated against this OpenAPI specification. Invalid requests return `400 Bad Request` with detailed error messages.\n\n## Error Responses\n\nErrors use standard HTTP status codes with JSON bodies:\n\n```json\n{\n  \"error\": \"Not Found\",\n  \"code\": 404,\n  \"details\": {\n    \"message\": \"The resource you requested does not exist\"\n  }\n}\n```\n\nCommon status codes:\n- `400`: Invalid request parameters\n- `401`: Authentication required or invalid\n- `403`: Insufficient permissions\n- `404`: Resource not found\n- `408`: Request took too long to process\n- `422`: Well-formed request that could not be processed\n- `429`: Rate limit exceeded\n\n## Pagination\n\nList endpoints return paginated results. Use these query parameters:\n- `page`: Page number (default: 1)\n- `per`: Items per page (default: 24, max: 100)\n\nResponses include a `meta` object with pagination info:\n\n```json\n{\n  \"data\": [...],\n  \"meta\": {\n    \"current_page\": 1,\n    \"per_page\": 25,\n    \"total_pages\": 5,\n    \"total_count\": 120,\n    \"next_page\": 2,\n    \"prev_page\": null,\n    \"has_more_pages\": true\n  }\n}\n```\n\n## Best Practices\n\nAre.na channels and users can contain thousands of items. The following guidelines will help you build responsive, well-behaved integrations.\n\n### Paginate, Don't Enumerate\n\nNever try to load an entire channel or user's content in one pass. Use `page` and `per` parameters to fetch only the data you need right now. Check `meta.has_more_pages` and load subsequent pages on demand rather than in a loop.\n\n**Do:**\n- Fetch the first page and display it immediately\n- Load more pages as the user scrolls or explicitly requests them\n\n**Don't:**\n- Loop through all pages at startup to \"build a complete picture\"\n- Set `per=100` and iterate until `has_more_pages` is `false`\n\n### Use HTTP Caching\n\nAll responses include `Cache-Control` and `ETag` headers. Unauthenticated responses are `max-age=300, public` — your client can reuse them for 5 minutes without any network request. Authenticated responses are `private, no-cache` — your client may store them but must revalidate before each reuse.\n\nTo revalidate, send the `ETag` value from a previous response as `If-None-Match`:\n\n```\nGET /v3/channels/123\nIf-None-Match: \"abc123\"\n```\n\nIf the resource hasn't changed, the API returns `304 Not Modified` with no body, saving bandwidth. Single-resource endpoints (e.g., `/v3/channels/:id`, `/v3/blocks/:id`) also skip server-side work entirely on a match. Note that 304 responses still count against your rate limit.\n\n### Fetch Summaries Before Details\n\nStart with lightweight list endpoints (e.g., a channel's first page of contents) before drilling into individual blocks or nested resources. Avoid eagerly resolving every connection or nested object — fetch details only when a user explicitly needs them.\n\n### Respect Rate Limits Gracefully\n\nMonitor the `X-RateLimit-Limit` and `X-RateLimit-Reset` headers. If you receive a `429` response, wait until the reset window before retrying — don't retry in a tight loop. Consider adding exponential backoff and a short delay between sequential requests (e.g., 200–500ms) when making multiple calls.\n\n### Design for Partial Data\n\nChannels can have tens of thousands of connections. Your application should function well with just the first page of results, not require the full dataset upfront. Display what you have and offer the user a way to load more.\n\n### Build Statically When Possible\n\nIf you're building a website that displays Are.na content, prefer static site generation (fetching data at build time) over live API requests on every page view. This eliminates rate limit concerns for your visitors and makes your site faster and more resilient. If you need fresher data, cache responses server-side with a reasonable TTL rather than proxying every request through to the API.\n\n### Avoid Write-Heavy Loops\n\nIf you're creating or connecting multiple blocks, batch your logic and add delays between write operations. Rapid-fire mutations can hit rate limits quickly and may trigger abuse detection.\n"
   },
-  "servers": [{ "url": "https://api.are.na", "description": "Production API" }],
-  "security": [{ "BearerAuth": [] }, {}],
+  "servers": [
+    {
+      "url": "https://api.are.na",
+      "description": "Production API"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    },
+    {}
+  ],
   "components": {
     "securitySchemes": {
       "BearerAuth": {
@@ -48,7 +58,11 @@
         "in": "query",
         "required": false,
         "description": "Page number for pagination",
-        "schema": { "type": "integer", "minimum": 1, "default": 1 },
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
         "example": 1
       },
       "PerParam": {
@@ -69,21 +83,27 @@
         "in": "path",
         "required": true,
         "description": "Resource ID",
-        "schema": { "type": "integer" }
+        "schema": {
+          "type": "integer"
+        }
       },
       "SlugOrIdParam": {
         "name": "id",
         "in": "path",
         "required": true,
         "description": "Resource ID or slug",
-        "schema": { "type": "string" }
+        "schema": {
+          "type": "string"
+        }
       },
       "ConnectionSortParam": {
         "name": "sort",
         "in": "query",
         "required": false,
         "description": "Sort by the date the relationship was created.",
-        "schema": { "$ref": "#/components/schemas/ConnectionSort" },
+        "schema": {
+          "$ref": "#/components/schemas/ConnectionSort"
+        },
         "example": "created_at_desc"
       },
       "ContentSortParam": {
@@ -91,7 +111,9 @@
         "in": "query",
         "required": false,
         "description": "Sort by creation or last update time.",
-        "schema": { "$ref": "#/components/schemas/ContentSort" },
+        "schema": {
+          "$ref": "#/components/schemas/ContentSort"
+        },
         "example": "created_at_desc"
       },
       "GroupSortParam": {
@@ -99,7 +121,9 @@
         "in": "query",
         "required": false,
         "description": "Sort groups by name or date.",
-        "schema": { "$ref": "#/components/schemas/GroupSort" },
+        "schema": {
+          "$ref": "#/components/schemas/GroupSort"
+        },
         "example": "name_asc"
       },
       "ChannelContentSortParam": {
@@ -107,7 +131,9 @@
         "in": "query",
         "required": false,
         "description": "Sort channel contents. Use `position` for the owner's manual\narrangement, or sort by date. Defaults to `position_desc`.\n",
-        "schema": { "$ref": "#/components/schemas/ChannelContentSort" },
+        "schema": {
+          "$ref": "#/components/schemas/ChannelContentSort"
+        },
         "example": "position_desc"
       },
       "ContentTypeFilterParam": {
@@ -115,8 +141,43 @@
         "in": "query",
         "required": false,
         "description": "Filter to a specific content type.",
-        "schema": { "$ref": "#/components/schemas/ContentTypeFilter" },
+        "schema": {
+          "$ref": "#/components/schemas/ContentTypeFilter"
+        },
         "example": "Image"
+      },
+      "LimitParam": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "Number of feed items to return (max 100)",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 24
+        },
+        "example": 24
+      },
+      "CursorNextParam": {
+        "name": "next",
+        "in": "query",
+        "required": false,
+        "description": "Load the **next** page (toward older items — the \"load more\"\ndirection, since feeds are ordered newest-first). Pass back the\n`meta.next_cursor` from a previous response.\n",
+        "schema": {
+          "type": "string"
+        },
+        "example": "eyJzIjoxNzE3NjEyMzQ1LCJtIjo0MjB9"
+      },
+      "CursorPrevParam": {
+        "name": "prev",
+        "in": "query",
+        "required": false,
+        "description": "Load the **previous** page (toward newer items). Pass back the\n`meta.prev_cursor` from a previous response.\n",
+        "schema": {
+          "type": "string"
+        },
+        "example": "eyJzIjoxNzE3NjEyMzQ1LCJtIjo0MjB9"
       }
     },
     "responses": {
@@ -124,7 +185,9 @@
         "description": "Unauthorized",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" }
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
           }
         }
       },
@@ -132,7 +195,9 @@
         "description": "Resource not found",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" }
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
           }
         }
       },
@@ -140,7 +205,9 @@
         "description": "Validation error",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" }
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
           }
         }
       },
@@ -148,7 +215,16 @@
         "description": "Forbidden - insufficient permissions to access this resource",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" }
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Forbidden",
+              "code": 403,
+              "details": {
+                "message": "You do not have permission to access this resource."
+              }
+            }
           }
         }
       },
@@ -156,11 +232,15 @@
         "description": "Bad request - missing or invalid parameters",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" },
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
             "example": {
               "error": "Bad Request",
               "code": 400,
-              "details": { "message": "body is required" }
+              "details": {
+                "message": "body is required"
+              }
             }
           }
         }
@@ -169,11 +249,32 @@
         "description": "Validation failed - the request was well-formed but contained semantic errors",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" },
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
             "example": {
-              "error": "Validation failed",
+              "error": "Unprocessable Entity",
               "code": 422,
-              "details": { "errors": { "title": ["can't be blank"] } }
+              "details": {
+                "message": "You've reached your limit of blocks"
+              }
+            }
+          }
+        }
+      },
+      "RequestTimeoutResponse": {
+        "description": "Request timeout - the request took too long to process and was canceled",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Request Timeout",
+              "code": 408,
+              "details": {
+                "message": "The request took too long to process and was canceled. Please try again or narrow the request."
+              }
             }
           }
         }
@@ -183,28 +284,38 @@
         "headers": {
           "Retry-After": {
             "description": "Seconds to wait before retrying",
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "example": "65"
           },
           "X-RateLimit-Limit": {
             "description": "Request limit per minute",
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "example": "30"
           },
           "X-RateLimit-Tier": {
             "description": "User's current tier",
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "example": "guest"
           },
           "X-RateLimit-Window": {
             "description": "Time window in seconds",
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "example": "60"
           }
         },
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/RateLimitError" }
+            "schema": {
+              "$ref": "#/components/schemas/RateLimitError"
+            }
           }
         }
       }
@@ -231,6 +342,21 @@
                 "type": "string",
                 "description": "Detailed error message",
                 "example": "The resource you are looking for does not exist."
+              },
+              "errors": {
+                "description": "Validation errors, when applicable",
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                ]
               }
             }
           }
@@ -277,7 +403,10 @@
               "current_status": {
                 "type": "object",
                 "properties": {
-                  "tier": { "type": "string", "example": "guest" },
+                  "tier": {
+                    "type": "string",
+                    "example": "guest"
+                  },
                   "limits": {
                     "type": "object",
                     "example": {
@@ -300,7 +429,9 @@
                       },
                       "benefits": {
                         "type": "array",
-                        "items": { "type": "string" },
+                        "items": {
+                          "type": "string"
+                        },
                         "example": [
                           "4x higher rate limit",
                           "Persistent authentication",
@@ -317,7 +448,9 @@
               },
               "suggestions": {
                 "type": "array",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "example": [
                   "Sign up for a free account to get 120 requests per minute",
                   "Implement exponential backoff with jitter",
@@ -354,7 +487,9 @@
           }
         },
         "required": ["self"],
-        "additionalProperties": { "$ref": "#/components/schemas/Link" }
+        "additionalProperties": {
+          "$ref": "#/components/schemas/Link"
+        }
       },
       "Link": {
         "type": "object",
@@ -381,7 +516,7 @@
           "html": {
             "type": "string",
             "description": "HTML rendering of the markdown",
-            "example": "\u003cp\u003eThis is \u003cstrong\u003eonly\u003c/strong\u003e a \u003ca href=\"https://example.com\" target=\"_blank\" rel=\"nofollow noopener\"\u003etest\u003c/a\u003e.\u003c/p\u003e"
+            "example": "<p>This is <strong>only</strong> a <a href=\"https://example.com\" target=\"_blank\" rel=\"nofollow noopener\">test</a>.</p>"
           },
           "plain": {
             "type": "string",
@@ -435,23 +570,43 @@
         "description": "Arbitrary key-value pairs stored on an entity.\nKeys are alphanumeric/underscore, max 40 characters.\nValues are scalars (string, number, boolean). Max 50 keys, 32KB total.\n",
         "additionalProperties": {
           "oneOf": [
-            { "type": "string", "maxLength": 2000 },
-            { "type": "number" },
-            { "type": "boolean" }
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            }
           ]
         },
         "maxProperties": 50,
-        "example": { "status": "reviewed", "score": 0.95, "featured": true }
+        "example": {
+          "status": "reviewed",
+          "score": 0.95,
+          "featured": true
+        }
       },
       "MetadataInput": {
         "type": "object",
         "description": "Arbitrary key-value pairs to set on an entity. Uses merge semantics:\nnew keys are added, existing keys are updated, keys set to null are removed.\nKeys must be alphanumeric/underscore, max 40 characters.\nValues must be scalars (string, number, boolean) or null (to delete). Max 50 keys, 32KB total.\n",
         "additionalProperties": {
           "oneOf": [
-            { "type": "string", "maxLength": 2000 },
-            { "type": "number" },
-            { "type": "boolean" },
-            { "type": "null" }
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "maxProperties": 50
@@ -477,8 +632,12 @@
           },
           "metadata": {
             "oneOf": [
-              { "$ref": "#/components/schemas/Metadata" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "Custom key-value metadata"
           },
@@ -490,8 +649,12 @@
           },
           "connected_by": {
             "oneOf": [
-              { "$ref": "#/components/schemas/EmbeddedUser" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/EmbeddedUser"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "User who created this connection"
           }
@@ -501,12 +664,18 @@
       "Connection": {
         "description": "Full connection resource with abilities and links.\nUsed for GET /v3/connections/:id\n",
         "allOf": [
-          { "$ref": "#/components/schemas/EmbeddedConnection" },
+          {
+            "$ref": "#/components/schemas/EmbeddedConnection"
+          },
           {
             "type": "object",
             "properties": {
-              "can": { "$ref": "#/components/schemas/ConnectionAbilities" },
-              "_links": { "$ref": "#/components/schemas/Links" }
+              "can": {
+                "$ref": "#/components/schemas/ConnectionAbilities"
+              },
+              "_links": {
+                "$ref": "#/components/schemas/Links"
+              }
             },
             "required": ["can", "_links"]
           }
@@ -566,7 +735,9 @@
       "User": {
         "description": "Full user representation",
         "allOf": [
-          { "$ref": "#/components/schemas/EmbeddedUser" },
+          {
+            "$ref": "#/components/schemas/EmbeddedUser"
+          },
           {
             "type": "object",
             "properties": {
@@ -584,15 +755,23 @@
               },
               "bio": {
                 "oneOf": [
-                  { "$ref": "#/components/schemas/MarkdownContent" },
-                  { "type": "null" }
+                  {
+                    "$ref": "#/components/schemas/MarkdownContent"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ],
                 "description": "User biography with markdown, HTML, and plain text renderings"
               },
               "badge": {
                 "oneOf": [
-                  { "$ref": "#/components/schemas/UserBadge" },
-                  { "type": "null" }
+                  {
+                    "$ref": "#/components/schemas/UserBadge"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ],
                 "description": "Denotes plan or other distinction"
               },
@@ -600,7 +779,9 @@
                 "$ref": "#/components/schemas/UserTier",
                 "description": "User's subscription tier"
               },
-              "counts": { "$ref": "#/components/schemas/UserCounts" },
+              "counts": {
+                "$ref": "#/components/schemas/UserCounts"
+              },
               "_links": {
                 "$ref": "#/components/schemas/Links",
                 "description": "HATEOAS links for navigation"
@@ -614,6 +795,29 @@
               "counts",
               "_links"
             ]
+          }
+        ]
+      },
+      "Me": {
+        "description": "The authenticated user's own profile, returned by `GET /v3/me`.\nExtends `User` with the token holder's email address. This field is\nintentionally not present on `/v3/users/{id}` or on embedded `User`\nreferences nested in other resources.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/User"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "counts": {
+                "$ref": "#/components/schemas/MeCounts"
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "description": "The authenticated user's email address.",
+                "example": "jane@example.com"
+              }
+            },
+            "required": ["email"]
           }
         ]
       },
@@ -639,19 +843,44 @@
         },
         "required": ["channels", "followers", "following"]
       },
-      "Group": {
-        "description": "Full group representation",
+      "MeCounts": {
+        "description": "Counts for the authenticated user, including private notification state.",
         "allOf": [
-          { "$ref": "#/components/schemas/EmbeddedGroup" },
+          {
+            "$ref": "#/components/schemas/UserCounts"
+          },
           {
             "type": "object",
             "properties": {
-              "bio": {
+              "notifications": {
+                "type": "integer",
+                "description": "Number of unread notifications for the authenticated user",
+                "example": 3
+              }
+            },
+            "required": ["notifications"]
+          }
+        ]
+      },
+      "Group": {
+        "description": "Full group representation",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EmbeddedGroup"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "description": {
                 "oneOf": [
-                  { "$ref": "#/components/schemas/MarkdownContent" },
-                  { "type": "null" }
+                  {
+                    "$ref": "#/components/schemas/MarkdownContent"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ],
-                "description": "Group biography with markdown, HTML, and plain text renderings"
+                "description": "Group description with markdown, HTML, and plain text renderings"
               },
               "created_at": {
                 "type": "string",
@@ -669,13 +898,26 @@
                 "$ref": "#/components/schemas/EmbeddedUser",
                 "description": "User who owns/created the group"
               },
-              "counts": { "$ref": "#/components/schemas/GroupCounts" },
+              "counts": {
+                "$ref": "#/components/schemas/GroupCounts"
+              },
+              "can": {
+                "$ref": "#/components/schemas/GroupAbilities",
+                "description": "Actions the current user can perform on the group"
+              },
               "_links": {
                 "$ref": "#/components/schemas/Links",
                 "description": "HATEOAS links for navigation"
               }
             },
-            "required": ["created_at", "updated_at", "user", "counts", "_links"]
+            "required": [
+              "created_at",
+              "updated_at",
+              "user",
+              "counts",
+              "can",
+              "_links"
+            ]
           }
         ]
       },
@@ -695,6 +937,247 @@
           }
         },
         "required": ["channels", "users"]
+      },
+      "MembershipInvitation": {
+        "type": "object",
+        "description": "Pending invitation for a user to join a group.\n\nInvitee acceptance and decline currently happen through the Are.na web\nUI using tokenized invitation links sent by email. The web UI uses the\nGraphQL `acceptMembershipInvitation` and `declineMembershipInvitation`\nmutations; this REST surface only exposes group-manager list and revoke\noperations.\n",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Unique identifier for the invitation",
+            "example": 12345
+          },
+          "type": {
+            "type": "string",
+            "enum": ["MembershipInvitation"],
+            "example": "MembershipInvitation"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EmbeddedGroup",
+            "description": "Group the invitee is invited to join"
+          },
+          "invitee": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EmbeddedUser"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User being invited, when available"
+          },
+          "invitee_email": {
+            "type": ["string", "null"],
+            "format": "email",
+            "description": "Email address being invited, visible to users who can manage invitations",
+            "example": "invitee@example.com"
+          },
+          "invited_by": {
+            "$ref": "#/components/schemas/EmbeddedUser",
+            "description": "User who created the invitation"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["pending", "accepted", "declined", "revoked"],
+            "example": "pending"
+          },
+          "accepted_at": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "When the invitation was accepted",
+            "example": null
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the invitation was created",
+            "example": "2023-01-15T10:30:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the invitation was last updated",
+            "example": "2023-01-15T10:30:00Z"
+          },
+          "_links": {
+            "type": "object",
+            "description": "Links for navigation. Empty today because no public endpoint\naddresses an invitation directly; reserved for future use.\n",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "target",
+          "invitee",
+          "invitee_email",
+          "invited_by",
+          "state",
+          "accepted_at",
+          "created_at",
+          "updated_at",
+          "_links"
+        ]
+      },
+      "GroupInvite": {
+        "type": "object",
+        "description": "Shareable invite code for joining a group",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Unique identifier for the invite code",
+            "example": 12345
+          },
+          "type": {
+            "type": "string",
+            "enum": ["GroupInvite"],
+            "example": "GroupInvite"
+          },
+          "code": {
+            "type": "string",
+            "description": "Invite code required to join the group",
+            "example": "abc123xyz"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Public Are.na URL for accepting the group invite",
+            "example": "https://www.are.na/group/research-studio/invite/abc123xyz"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the invite code was created",
+            "example": "2023-01-15T10:30:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the invite code was last updated",
+            "example": "2023-01-15T10:30:00Z"
+          },
+          "_links": {
+            "$ref": "#/components/schemas/Links",
+            "description": "HATEOAS links for navigation"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "code",
+          "url",
+          "created_at",
+          "updated_at",
+          "_links"
+        ]
+      },
+      "GroupMember": {
+        "description": "Group member entry, including the group owner and any collaborators",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EmbeddedUser"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": ["owner", "member"],
+                "description": "The user's role on the group. `owner` is the group's creator;\n`member` is anyone else with a group membership.\n",
+                "example": "member"
+              }
+            },
+            "required": ["role"]
+          }
+        ]
+      },
+      "GroupMemberList": {
+        "type": "object",
+        "description": "Data payload containing an array of group members",
+        "properties": {
+          "data": {
+            "type": "array",
+            "description": "Array of group members (owner first on page 1)",
+            "items": {
+              "$ref": "#/components/schemas/GroupMember"
+            }
+          }
+        },
+        "required": ["data"]
+      },
+      "GroupMemberListResponse": {
+        "description": "Paginated list of group members with total count",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GroupMemberList"
+          },
+          {
+            "$ref": "#/components/schemas/PaginatedResponse"
+          }
+        ]
+      },
+      "MembershipInvitationList": {
+        "type": "object",
+        "description": "Data payload containing an array of membership invitations",
+        "properties": {
+          "data": {
+            "type": "array",
+            "description": "Array of pending membership invitations",
+            "items": {
+              "$ref": "#/components/schemas/MembershipInvitation"
+            }
+          }
+        },
+        "required": ["data"]
+      },
+      "MembershipInvitationListResponse": {
+        "description": "Paginated list of pending membership invitations",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MembershipInvitationList"
+          },
+          {
+            "$ref": "#/components/schemas/PaginatedResponse"
+          }
+        ]
+      },
+      "GroupMemberInviteOutcome": {
+        "type": "string",
+        "description": "Discriminator for the result of `POST /v3/groups/{id}/invitations`.\n\n- `added`: A new group membership was created (the invitee already\n  follows the caller, so the invite/accept round trip was skipped).\n- `invited`: A new pending invitation was created and an email was sent.\n- `invitation_pending`: An open invitation for this user/email already\n  existed; that invitation is returned unchanged.\n- `already_member`: The user is already a group member; no action was\n  taken.\n",
+        "enum": ["added", "invited", "invitation_pending", "already_member"]
+      },
+      "GroupMemberInviteResponse": {
+        "type": "object",
+        "description": "Result of `POST /v3/groups/{id}/invitations`. Inspect `outcome` to\ndetermine what happened; HTTP status mirrors it (`201` for created outcomes,\n`200` for no-op outcomes).\n",
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/GroupMemberInviteOutcome"
+          },
+          "user": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EmbeddedUser"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The user that this request resolved to, when known. Null only when\nan invitation was issued by email and no matching user exists yet.\n"
+          },
+          "invitation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MembershipInvitation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The invitation associated with this request, for `invited` and\n`invitation_pending` outcomes.\n"
+          }
+        },
+        "required": ["outcome", "user", "invitation"]
       },
       "UserBadge": {
         "type": "string",
@@ -917,7 +1400,16 @@
       "ChannelIds": {
         "type": "array",
         "description": "Array of channel IDs or slugs. Accepts numeric IDs, string IDs, or\nchannel slugs (e.g., `[123, \"456\", \"my-channel-slug\"]`).\n",
-        "items": { "oneOf": [{ "type": "integer" }, { "type": "string" }] },
+        "items": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
         "minItems": 1,
         "maxItems": 20,
         "example": [123, "my-channel"]
@@ -928,7 +1420,14 @@
         "required": ["id"],
         "properties": {
           "id": {
-            "oneOf": [{ "type": "integer" }, { "type": "string" }],
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "description": "Channel ID or slug."
           },
           "position": {
@@ -971,7 +1470,9 @@
           "files": {
             "type": "array",
             "description": "Presigned URLs for each requested file",
-            "items": { "$ref": "#/components/schemas/PresignedFile" }
+            "items": {
+              "$ref": "#/components/schemas/PresignedFile"
+            }
           },
           "expires_in": {
             "type": "integer",
@@ -1100,7 +1601,10 @@
                   "type": "integer",
                   "description": "Original index in the request array"
                 },
-                "error": { "type": "string", "description": "Error message" }
+                "error": {
+                  "type": "string",
+                  "description": "Error message"
+                }
               },
               "required": ["index", "error"]
             }
@@ -1131,12 +1635,24 @@
       "Block": {
         "description": "A block is a piece of content on Are.na. Blocks come in different types,\neach with its own set of fields. Use the `type` field to determine which\nfields are available.\n",
         "oneOf": [
-          { "$ref": "#/components/schemas/TextBlock" },
-          { "$ref": "#/components/schemas/ImageBlock" },
-          { "$ref": "#/components/schemas/LinkBlock" },
-          { "$ref": "#/components/schemas/AttachmentBlock" },
-          { "$ref": "#/components/schemas/EmbedBlock" },
-          { "$ref": "#/components/schemas/PendingBlock" }
+          {
+            "$ref": "#/components/schemas/TextBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ImageBlock"
+          },
+          {
+            "$ref": "#/components/schemas/LinkBlock"
+          },
+          {
+            "$ref": "#/components/schemas/AttachmentBlock"
+          },
+          {
+            "$ref": "#/components/schemas/EmbedBlock"
+          },
+          {
+            "$ref": "#/components/schemas/PendingBlock"
+          }
         ],
         "discriminator": {
           "propertyName": "type",
@@ -1172,8 +1688,12 @@
           },
           "description": {
             "oneOf": [
-              { "$ref": "#/components/schemas/MarkdownContent" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/MarkdownContent"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "Block description with multiple renderings"
           },
@@ -1202,18 +1722,28 @@
             "description": "When the block was last updated",
             "example": "2023-01-15T14:45:00Z"
           },
-          "user": { "$ref": "#/components/schemas/EmbeddedUser" },
+          "user": {
+            "$ref": "#/components/schemas/EmbeddedUser"
+          },
           "metadata": {
             "oneOf": [
-              { "$ref": "#/components/schemas/Metadata" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "Custom key-value metadata"
           },
           "source": {
             "oneOf": [
-              { "$ref": "#/components/schemas/BlockSource" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/BlockSource"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "Source URL and metadata (if block was created from a URL)"
           },
@@ -1223,15 +1753,23 @@
           },
           "connection": {
             "oneOf": [
-              { "$ref": "#/components/schemas/EmbeddedConnection" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/EmbeddedConnection"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "Connection context (only present when block is returned as part of channel contents).\nContains position, pinned status, and information about who connected the block.\n"
           },
           "can": {
             "oneOf": [
-              { "$ref": "#/components/schemas/BlockAbilities" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/BlockAbilities"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "Abilities object (only present for full block responses, not in channel contents).\nIndicates what actions the current user can perform on this block.\n"
           }
@@ -1273,7 +1811,9 @@
       "TextBlock": {
         "description": "A text block containing markdown content",
         "allOf": [
-          { "$ref": "#/components/schemas/BaseBlockProperties" },
+          {
+            "$ref": "#/components/schemas/BaseBlockProperties"
+          },
           {
             "type": "object",
             "properties": {
@@ -1294,7 +1834,9 @@
       "ImageBlock": {
         "description": "An image block containing an uploaded or scraped image",
         "allOf": [
-          { "$ref": "#/components/schemas/BaseBlockProperties" },
+          {
+            "$ref": "#/components/schemas/BaseBlockProperties"
+          },
           {
             "type": "object",
             "properties": {
@@ -1315,7 +1857,9 @@
       "LinkBlock": {
         "description": "A link block representing a URL with optional preview",
         "allOf": [
-          { "$ref": "#/components/schemas/BaseBlockProperties" },
+          {
+            "$ref": "#/components/schemas/BaseBlockProperties"
+          },
           {
             "type": "object",
             "properties": {
@@ -1326,15 +1870,23 @@
               },
               "image": {
                 "oneOf": [
-                  { "$ref": "#/components/schemas/BlockImage" },
-                  { "type": "null" }
+                  {
+                    "$ref": "#/components/schemas/BlockImage"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ],
                 "description": "Preview image (if available)"
               },
               "content": {
                 "oneOf": [
-                  { "$ref": "#/components/schemas/MarkdownContent" },
-                  { "type": "null" }
+                  {
+                    "$ref": "#/components/schemas/MarkdownContent"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ],
                 "description": "Extracted text content from the link"
               }
@@ -1346,7 +1898,9 @@
       "AttachmentBlock": {
         "description": "An attachment block containing an uploaded file",
         "allOf": [
-          { "$ref": "#/components/schemas/BaseBlockProperties" },
+          {
+            "$ref": "#/components/schemas/BaseBlockProperties"
+          },
           {
             "type": "object",
             "properties": {
@@ -1361,8 +1915,12 @@
               },
               "image": {
                 "oneOf": [
-                  { "$ref": "#/components/schemas/BlockImage" },
-                  { "type": "null" }
+                  {
+                    "$ref": "#/components/schemas/BlockImage"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ],
                 "description": "Preview image (for PDFs and other previewable files)"
               }
@@ -1374,7 +1932,9 @@
       "EmbedBlock": {
         "description": "An embed block containing embedded media (video, audio, etc.)",
         "allOf": [
-          { "$ref": "#/components/schemas/BaseBlockProperties" },
+          {
+            "$ref": "#/components/schemas/BaseBlockProperties"
+          },
           {
             "type": "object",
             "properties": {
@@ -1389,8 +1949,12 @@
               },
               "image": {
                 "oneOf": [
-                  { "$ref": "#/components/schemas/BlockImage" },
-                  { "type": "null" }
+                  {
+                    "$ref": "#/components/schemas/BlockImage"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ],
                 "description": "Thumbnail image (if available)"
               }
@@ -1402,7 +1966,9 @@
       "PendingBlock": {
         "description": "A block that is currently being processed. The final type (Text, Image, Link, etc.)\nwill be determined once processing completes. Check the `state` field for processing status.\n",
         "allOf": [
-          { "$ref": "#/components/schemas/BaseBlockProperties" },
+          {
+            "$ref": "#/components/schemas/BaseBlockProperties"
+          },
           {
             "type": "object",
             "properties": {
@@ -1432,8 +1998,12 @@
           },
           "provider": {
             "oneOf": [
-              { "$ref": "#/components/schemas/BlockProvider" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/BlockProvider"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         },
@@ -1609,7 +2179,7 @@
           "html": {
             "type": ["string", "null"],
             "description": "Embed HTML",
-            "example": "\u003ciframe src='...'\u003e\u003c/iframe\u003e"
+            "example": "<iframe src='...'></iframe>"
           },
           "thumbnail_url": {
             "type": ["string", "null"],
@@ -1673,8 +2243,12 @@
           },
           "body": {
             "oneOf": [
-              { "$ref": "#/components/schemas/MarkdownContent" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/MarkdownContent"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "Comment body with markdown, HTML, and plain text renderings"
           },
@@ -1690,11 +2264,17 @@
             "description": "When the comment was last updated",
             "example": "2023-01-15T14:45:00Z"
           },
-          "user": { "$ref": "#/components/schemas/EmbeddedUser" },
+          "user": {
+            "$ref": "#/components/schemas/EmbeddedUser"
+          },
           "_links": {
             "allOf": [
-              { "$ref": "#/components/schemas/Links" },
-              { "description": "HATEOAS links for navigation" }
+              {
+                "$ref": "#/components/schemas/Links"
+              },
+              {
+                "description": "HATEOAS links for navigation"
+              }
             ]
           }
         },
@@ -1726,8 +2306,12 @@
           },
           "description": {
             "oneOf": [
-              { "$ref": "#/components/schemas/MarkdownContent" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/MarkdownContent"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "Channel description with multiple renderings"
           },
@@ -1735,7 +2319,9 @@
             "$ref": "#/components/schemas/ChannelState",
             "example": "available"
           },
-          "visibility": { "$ref": "#/components/schemas/ChannelVisibility" },
+          "visibility": {
+            "$ref": "#/components/schemas/ChannelVisibility"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -1750,35 +2336,57 @@
           },
           "metadata": {
             "oneOf": [
-              { "$ref": "#/components/schemas/Metadata" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/Metadata"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "Custom key-value metadata"
           },
-          "owner": { "$ref": "#/components/schemas/ChannelOwner" },
-          "counts": { "$ref": "#/components/schemas/ChannelCounts" },
+          "owner": {
+            "$ref": "#/components/schemas/ChannelOwner"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ChannelCounts"
+          },
           "collaborators": {
             "type": "array",
             "description": "Collaborators on this channel (users and groups).\nOnly present when channel is returned as a full resource, not when embedded.\n",
-            "items": { "$ref": "#/components/schemas/ChannelCollaborator" }
+            "items": {
+              "$ref": "#/components/schemas/ChannelCollaborator"
+            }
           },
           "_links": {
             "allOf": [
-              { "$ref": "#/components/schemas/Links" },
-              { "description": "HATEOAS links for navigation" }
+              {
+                "$ref": "#/components/schemas/Links"
+              },
+              {
+                "description": "HATEOAS links for navigation"
+              }
             ]
           },
           "connection": {
             "oneOf": [
-              { "$ref": "#/components/schemas/EmbeddedConnection" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/EmbeddedConnection"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "Connection context (only present when channel is returned as part of another channel's contents).\nContains position, pinned status, and information about who connected the channel.\n"
           },
           "can": {
             "oneOf": [
-              { "$ref": "#/components/schemas/ChannelAbilities" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/ChannelAbilities"
+              },
+              {
+                "type": "null"
+              }
             ],
             "description": "Actions the current user can perform on this channel.\nOnly present when channel is returned as a full resource, not when embedded.\n"
           }
@@ -1800,8 +2408,12 @@
       "ChannelOwner": {
         "description": "Channel owner (User or Group)",
         "oneOf": [
-          { "$ref": "#/components/schemas/EmbeddedUser" },
-          { "$ref": "#/components/schemas/EmbeddedGroup" }
+          {
+            "$ref": "#/components/schemas/EmbeddedUser"
+          },
+          {
+            "$ref": "#/components/schemas/EmbeddedGroup"
+          }
         ],
         "discriminator": {
           "propertyName": "type",
@@ -1811,11 +2423,33 @@
           }
         }
       },
+      "ChannelOwnerInput": {
+        "type": "object",
+        "description": "User or Group that should own the channel.",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "ID of the User or Group to own the channel.",
+            "example": 12345
+          },
+          "type": {
+            "type": "string",
+            "enum": ["User", "Group"],
+            "default": "User",
+            "description": "Owner type. Defaults to User when omitted."
+          }
+        }
+      },
       "ChannelCollaborator": {
         "description": "Channel collaborator (User or Group)",
         "oneOf": [
-          { "$ref": "#/components/schemas/EmbeddedUser" },
-          { "$ref": "#/components/schemas/EmbeddedGroup" }
+          {
+            "$ref": "#/components/schemas/EmbeddedUser"
+          },
+          {
+            "$ref": "#/components/schemas/EmbeddedGroup"
+          }
         ],
         "discriminator": {
           "propertyName": "type",
@@ -1852,6 +2486,38 @@
         },
         "required": ["add_to", "update", "destroy", "manage_collaborators"]
       },
+      "GroupAbilities": {
+        "type": "object",
+        "description": "Actions the current user can perform on the group",
+        "properties": {
+          "update": {
+            "type": "boolean",
+            "description": "Whether the user can update this group",
+            "example": false
+          },
+          "destroy": {
+            "type": "boolean",
+            "description": "Whether the user can delete this group",
+            "example": false
+          },
+          "manage_members": {
+            "type": "boolean",
+            "description": "Whether the user can add/remove group members",
+            "example": false
+          },
+          "manage_invitations": {
+            "type": "boolean",
+            "description": "Whether the user can create/revoke group invitations",
+            "example": false
+          }
+        },
+        "required": [
+          "update",
+          "destroy",
+          "manage_members",
+          "manage_invitations"
+        ]
+      },
       "ChannelCounts": {
         "type": "object",
         "description": "Counts of various items in the channel",
@@ -1878,6 +2544,287 @@
           }
         },
         "required": ["blocks", "channels", "contents", "collaborators"]
+      },
+      "ActivityKind": {
+        "type": "string",
+        "description": "The normalized activity kind. Encodes the actor's action and the item /\ntarget involved, so clients can render and switch on a single value\nrather than stitching together separate action and connector phrases.\n\nKind determines the expected subject types:\n- `followed_user`: item=User, target=null, parent=null\n- `followed_channel`: item=Channel, target=null, parent=null\n- `followed_group`: item=Group, target=null, parent=null\n- `added_block_to_channel`: item=Block (Text/Image/Link/Attachment/Embed), target=Channel, parent=null\n- `added_channel_to_channel`: item=Channel, target=Channel, parent=null\n- `created_channel`: item=Channel, target=null, parent=null\n- `collaborating_with_user_on_channel`: item=User, target=Channel, parent=null\n- `collaborating_with_group_on_channel`: item=Group, target=Channel, parent=null\n- `commented_on_block`: item=Comment, target=Block, parent=Channel\n- `mentioned_you`: item=Comment, target=User, parent=Block\n- `added_user_to_group`: item=User, target=Group, parent=null\n",
+        "enum": [
+          "followed_user",
+          "followed_channel",
+          "followed_group",
+          "added_block_to_channel",
+          "added_channel_to_channel",
+          "created_channel",
+          "collaborating_with_user_on_channel",
+          "collaborating_with_group_on_channel",
+          "commented_on_block",
+          "mentioned_you",
+          "added_user_to_group"
+        ],
+        "example": "added_block_to_channel"
+      },
+      "ActivityActor": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/EmbeddedUser"
+          },
+          {
+            "$ref": "#/components/schemas/EmbeddedGroup"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "User": "#/components/schemas/EmbeddedUser",
+            "Group": "#/components/schemas/EmbeddedGroup"
+          }
+        },
+        "description": "User or group who performed the activity."
+      },
+      "ActivitySubject": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/EmbeddedUser"
+          },
+          {
+            "$ref": "#/components/schemas/EmbeddedGroup"
+          },
+          {
+            "$ref": "#/components/schemas/Channel"
+          },
+          {
+            "$ref": "#/components/schemas/TextBlock"
+          },
+          {
+            "$ref": "#/components/schemas/ImageBlock"
+          },
+          {
+            "$ref": "#/components/schemas/LinkBlock"
+          },
+          {
+            "$ref": "#/components/schemas/AttachmentBlock"
+          },
+          {
+            "$ref": "#/components/schemas/EmbedBlock"
+          },
+          {
+            "$ref": "#/components/schemas/Comment"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "User": "#/components/schemas/EmbeddedUser",
+            "Group": "#/components/schemas/EmbeddedGroup",
+            "Channel": "#/components/schemas/Channel",
+            "Text": "#/components/schemas/TextBlock",
+            "Image": "#/components/schemas/ImageBlock",
+            "Link": "#/components/schemas/LinkBlock",
+            "Attachment": "#/components/schemas/AttachmentBlock",
+            "Embed": "#/components/schemas/EmbedBlock",
+            "Comment": "#/components/schemas/Comment"
+          }
+        },
+        "description": "Resource involved in a feed activity."
+      },
+      "ActivityBase": {
+        "type": "object",
+        "description": "Common fields for feed activities and notifications.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Unique identifier for the underlying activity.",
+            "example": 12345
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the activity occurred.",
+            "example": "2024-06-05T12:00:00Z"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ActivityKind"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/ActivityActor"
+          },
+          "item": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ActivitySubject"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ActivitySubject"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ActivitySubject"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "kind",
+          "actor",
+          "item",
+          "target",
+          "parent"
+        ]
+      },
+      "Activity": {
+        "description": "A single feed activity.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ActivityBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["Activity"],
+                "example": "Activity"
+              }
+            },
+            "required": ["type"]
+          }
+        ]
+      },
+      "Notification": {
+        "description": "A notification feed activity with read state.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ActivityBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["Notification"],
+                "example": "Notification"
+              },
+              "is_read": {
+                "type": "boolean",
+                "description": "Whether the authenticated user has read this notification.",
+                "example": false
+              }
+            },
+            "required": ["type", "is_read"]
+          }
+        ]
+      },
+      "CursorMeta": {
+        "type": "object",
+        "description": "Cursor pagination metadata for the newest-first feeds. `next_cursor`\npages toward older items (the \"load more\" direction); `prev_cursor`\npages back toward newer items.\n",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of items requested.",
+            "example": 24
+          },
+          "next_cursor": {
+            "type": ["string", "null"],
+            "description": "Cursor for the next (older) page. Pass it back as the `next`\nparameter to continue paging toward older items. Null when no\nolder items remain.\n",
+            "example": "eyJzIjoxNzE3NjEyMzQ1LCJtIjo0MjB9"
+          },
+          "prev_cursor": {
+            "type": ["string", "null"],
+            "description": "Cursor for the previous (newer) page. Pass it back as the `prev`\nparameter to page toward newer items. Null when this page is\nempty.\n",
+            "example": "eyJzIjoxNzE3NjEyMzQ1LCJtIjo0MjB9"
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "Whether more (older) items exist beyond this page, reachable via\n`next_cursor`.\n",
+            "example": true
+          }
+        },
+        "required": ["limit", "next_cursor", "prev_cursor", "has_more"]
+      },
+      "FeedListResponse": {
+        "type": "object",
+        "description": "Cursor-paginated feed response.",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/CursorMeta"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Activity"
+            }
+          }
+        },
+        "required": ["meta", "data"]
+      },
+      "NotificationListResponse": {
+        "type": "object",
+        "description": "Cursor-paginated notification feed response.",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/CursorMeta"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            }
+          }
+        },
+        "required": ["meta", "data"]
+      },
+      "NotificationReadMeta": {
+        "type": "object",
+        "description": "The authenticated user's unread notification state after a mutation.",
+        "properties": {
+          "notifications": {
+            "type": "integer",
+            "description": "Number of unread notifications remaining.",
+            "example": 2
+          }
+        },
+        "required": ["notifications"]
+      },
+      "NotificationReadResponse": {
+        "type": "object",
+        "description": "Response to marking a single notification as read. Returns the updated\nnotification alongside the new unread count, so clients can refresh\nboth list state and badge without a follow-up request.\n",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/NotificationReadMeta"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Notification"
+          }
+        },
+        "required": ["meta", "data"]
+      },
+      "NotificationsReadAllResponse": {
+        "type": "object",
+        "description": "Response to marking all notifications as read.",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/NotificationReadMeta"
+          }
+        },
+        "required": ["meta"]
       },
       "PaginationMeta": {
         "type": "object",
@@ -1930,7 +2877,9 @@
         "type": "object",
         "description": "Base schema for all paginated responses (use allOf to extend with specific data type)",
         "properties": {
-          "meta": { "$ref": "#/components/schemas/PaginationMeta" }
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
         },
         "required": ["data", "meta"]
       },
@@ -1941,7 +2890,9 @@
           "data": {
             "type": "array",
             "description": "Array of users",
-            "items": { "$ref": "#/components/schemas/User" }
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
           }
         },
         "required": ["data"]
@@ -1953,7 +2904,9 @@
           "data": {
             "type": "array",
             "description": "Array of channels",
-            "items": { "$ref": "#/components/schemas/Channel" }
+            "items": {
+              "$ref": "#/components/schemas/Channel"
+            }
           }
         },
         "required": ["data"]
@@ -1967,12 +2920,24 @@
             "description": "Array of blocks and channels",
             "items": {
               "oneOf": [
-                { "$ref": "#/components/schemas/TextBlock" },
-                { "$ref": "#/components/schemas/ImageBlock" },
-                { "$ref": "#/components/schemas/LinkBlock" },
-                { "$ref": "#/components/schemas/AttachmentBlock" },
-                { "$ref": "#/components/schemas/EmbedBlock" },
-                { "$ref": "#/components/schemas/Channel" }
+                {
+                  "$ref": "#/components/schemas/TextBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ImageBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/LinkBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/AttachmentBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/EmbedBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/Channel"
+                }
               ]
             }
           }
@@ -1988,9 +2953,15 @@
             "description": "Array of users, channels, and/or groups",
             "items": {
               "oneOf": [
-                { "$ref": "#/components/schemas/User" },
-                { "$ref": "#/components/schemas/Channel" },
-                { "$ref": "#/components/schemas/Group" }
+                {
+                  "$ref": "#/components/schemas/User"
+                },
+                {
+                  "$ref": "#/components/schemas/Channel"
+                },
+                {
+                  "$ref": "#/components/schemas/Group"
+                }
               ]
             }
           }
@@ -2006,14 +2977,30 @@
             "description": "Array of results (blocks, channels, users, or groups)",
             "items": {
               "oneOf": [
-                { "$ref": "#/components/schemas/TextBlock" },
-                { "$ref": "#/components/schemas/ImageBlock" },
-                { "$ref": "#/components/schemas/LinkBlock" },
-                { "$ref": "#/components/schemas/AttachmentBlock" },
-                { "$ref": "#/components/schemas/EmbedBlock" },
-                { "$ref": "#/components/schemas/Channel" },
-                { "$ref": "#/components/schemas/User" },
-                { "$ref": "#/components/schemas/Group" }
+                {
+                  "$ref": "#/components/schemas/TextBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ImageBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/LinkBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/AttachmentBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/EmbedBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/Channel"
+                },
+                {
+                  "$ref": "#/components/schemas/User"
+                },
+                {
+                  "$ref": "#/components/schemas/Group"
+                }
               ]
             }
           }
@@ -2023,15 +3010,23 @@
       "UserListResponse": {
         "description": "Paginated list of users with total count",
         "allOf": [
-          { "$ref": "#/components/schemas/UserList" },
-          { "$ref": "#/components/schemas/PaginatedResponse" }
+          {
+            "$ref": "#/components/schemas/UserList"
+          },
+          {
+            "$ref": "#/components/schemas/PaginatedResponse"
+          }
         ]
       },
       "ChannelListResponse": {
         "description": "Paginated list of channels with total count",
         "allOf": [
-          { "$ref": "#/components/schemas/ChannelList" },
-          { "$ref": "#/components/schemas/PaginatedResponse" }
+          {
+            "$ref": "#/components/schemas/ChannelList"
+          },
+          {
+            "$ref": "#/components/schemas/PaginatedResponse"
+          }
         ]
       },
       "GroupList": {
@@ -2041,7 +3036,9 @@
           "data": {
             "type": "array",
             "description": "Array of groups",
-            "items": { "$ref": "#/components/schemas/Group" }
+            "items": {
+              "$ref": "#/components/schemas/Group"
+            }
           }
         },
         "required": ["data"]
@@ -2049,29 +3046,45 @@
       "GroupListResponse": {
         "description": "Paginated list of groups with total count",
         "allOf": [
-          { "$ref": "#/components/schemas/GroupList" },
-          { "$ref": "#/components/schemas/PaginatedResponse" }
+          {
+            "$ref": "#/components/schemas/GroupList"
+          },
+          {
+            "$ref": "#/components/schemas/PaginatedResponse"
+          }
         ]
       },
       "ConnectableListResponse": {
         "description": "Paginated list of connectable content (blocks and channels)",
         "allOf": [
-          { "$ref": "#/components/schemas/ConnectableList" },
-          { "$ref": "#/components/schemas/PaginatedResponse" }
+          {
+            "$ref": "#/components/schemas/ConnectableList"
+          },
+          {
+            "$ref": "#/components/schemas/PaginatedResponse"
+          }
         ]
       },
       "FollowableListResponse": {
         "description": "Paginated list of followable items (users, channels, and groups) with total count",
         "allOf": [
-          { "$ref": "#/components/schemas/FollowableList" },
-          { "$ref": "#/components/schemas/PaginatedResponse" }
+          {
+            "$ref": "#/components/schemas/FollowableList"
+          },
+          {
+            "$ref": "#/components/schemas/PaginatedResponse"
+          }
         ]
       },
       "EverythingListResponse": {
         "description": "Paginated list of all content types with total count",
         "allOf": [
-          { "$ref": "#/components/schemas/EverythingList" },
-          { "$ref": "#/components/schemas/PaginatedResponse" }
+          {
+            "$ref": "#/components/schemas/EverythingList"
+          },
+          {
+            "$ref": "#/components/schemas/PaginatedResponse"
+          }
         ]
       },
       "CommentList": {
@@ -2081,7 +3094,9 @@
           "data": {
             "type": "array",
             "description": "Array of comments",
-            "items": { "$ref": "#/components/schemas/Comment" }
+            "items": {
+              "$ref": "#/components/schemas/Comment"
+            }
           }
         },
         "required": ["data"]
@@ -2089,15 +3104,23 @@
       "CommentListResponse": {
         "description": "Paginated list of comments with total count",
         "allOf": [
-          { "$ref": "#/components/schemas/CommentList" },
-          { "$ref": "#/components/schemas/PaginatedResponse" }
+          {
+            "$ref": "#/components/schemas/CommentList"
+          },
+          {
+            "$ref": "#/components/schemas/PaginatedResponse"
+          }
         ]
       },
       "PingResponse": {
         "type": "object",
         "description": "Health check response",
         "properties": {
-          "status": { "type": "string", "enum": ["ok"], "example": "ok" }
+          "status": {
+            "type": "string",
+            "enum": ["ok"],
+            "example": "ok"
+          }
         },
         "required": ["status"]
       }
@@ -2243,7 +3266,9 @@
                         "unsupported_grant_type"
                       ]
                     },
-                    "error_description": { "type": "string" }
+                    "error_description": {
+                      "type": "string"
+                    }
                   }
                 },
                 "examples": {
@@ -2272,7 +3297,10 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": { "type": "string", "example": "invalid_client" },
+                    "error": {
+                      "type": "string",
+                      "example": "invalid_client"
+                    },
                     "error_description": {
                       "type": "string",
                       "example": "Client authentication failed due to unknown client or invalid credentials."
@@ -2295,10 +3323,16 @@
           "200": {
             "description": "OpenAPI specification in YAML format",
             "content": {
-              "application/yaml": { "schema": { "type": "string" } }
+              "application/yaml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" }
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          }
         }
       }
     },
@@ -2312,10 +3346,16 @@
           "200": {
             "description": "OpenAPI specification in JSON format",
             "content": {
-              "application/json": { "schema": { "type": "object" } }
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
             }
           },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" }
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          }
         }
       }
     },
@@ -2330,33 +3370,51 @@
             "description": "Ping response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/PingResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/PingResponse"
+                }
               }
             },
             "headers": {
               "X-RateLimit-Limit": {
                 "description": "Request limit per minute for this user's tier",
-                "schema": { "type": "string" },
+                "schema": {
+                  "type": "string"
+                },
                 "example": "120"
               },
               "X-RateLimit-Tier": {
                 "description": "User's current tier",
-                "schema": { "type": "string" },
+                "schema": {
+                  "type": "string"
+                },
                 "example": "free"
               }
             }
           },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
     "/v3/uploads/presign": {
       "post": {
         "summary": "Get a presigned upload URL",
-        "description": "Returns presigned S3 PUT URLs for direct file upload. Use this to upload\nfiles (images, attachments) without sending them through the API server.\nSupports up to 50 files per request.\n\n**Upload flow:**\n1. Call this endpoint with an array of files (filename + content type)\n2. PUT each file's bytes to its returned `upload_url` with the matching `Content-Type` header\n3. Create blocks via `POST /v3/blocks` with `value` set to the S3 URL:\n   `https://s3.amazonaws.com/arena_images-temp/\u003ckey\u003e`\n\nPresigned URLs expire after 1 hour.\n\n**Authentication required.**\n",
+        "description": "Returns presigned S3 PUT URLs for direct file upload. Use this to upload\nfiles (images, attachments) without sending them through the API server.\nSupports up to 50 files per request.\n\n**Upload flow:**\n1. Call this endpoint with an array of files (filename + content type)\n2. PUT each file's bytes to its returned `upload_url` with the matching `Content-Type` header\n3. Create blocks via `POST /v3/blocks` with `value` set to the S3 URL:\n   `https://s3.amazonaws.com/arena_images-temp/<key>`\n\nPresigned URLs expire after 1 hour.\n\n**Authentication required.**\n",
         "operationId": "presignUpload",
         "tags": ["Uploads"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2394,7 +3452,10 @@
                   "summary": "Presign a single image upload",
                   "value": {
                     "files": [
-                      { "filename": "photo.jpg", "content_type": "image/jpeg" }
+                      {
+                        "filename": "photo.jpg",
+                        "content_type": "image/jpeg"
+                      }
                     ]
                   }
                 },
@@ -2406,7 +3467,10 @@
                         "filename": "photo1.jpg",
                         "content_type": "image/jpeg"
                       },
-                      { "filename": "photo2.png", "content_type": "image/png" },
+                      {
+                        "filename": "photo2.png",
+                        "content_type": "image/png"
+                      },
                       {
                         "filename": "document.pdf",
                         "content_type": "application/pdf"
@@ -2423,13 +3487,24 @@
             "description": "Presigned URLs generated",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/PresignResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/PresignResponse"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequestResponse" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "400": {
+            "$ref": "#/components/responses/BadRequestResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -2439,14 +3514,23 @@
         "description": "Creates a new block and connects it to one or more channels.\n\nThe `value` field accepts either a URL or text content:\n- If `value` is a valid URL, the block type is inferred (Image, Link, Embed, etc.)\n- If `value` is plain text, a Text block is created\n\nYou can connect the block to multiple channels at once (up to 20).\n\nSpecify target channels using either `channels` (preferred) or `channel_ids` (legacy), but not both.\nThe `channels` form allows per-channel position and connection metadata.\n\n**Authentication required.**\n",
         "operationId": "createBlock",
         "tags": ["Blocks"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "allOf": [
-                  { "$ref": "#/components/schemas/BlockInput" },
+                  {
+                    "$ref": "#/components/schemas/BlockInput"
+                  },
                   {
                     "oneOf": [
                       {
@@ -2463,7 +3547,9 @@
                           }
                         },
                         "required": ["channel_ids"],
-                        "not": { "required": ["channels"] }
+                        "not": {
+                          "required": ["channels"]
+                        }
                       },
                       {
                         "type": "object",
@@ -2482,8 +3568,12 @@
                         "required": ["channels"],
                         "not": {
                           "anyOf": [
-                            { "required": ["channel_ids"] },
-                            { "required": ["insert_at"] }
+                            {
+                              "required": ["channel_ids"]
+                            },
+                            {
+                              "required": ["insert_at"]
+                            }
                           ]
                         }
                       }
@@ -2508,9 +3598,13 @@
                       {
                         "id": 123,
                         "position": 1,
-                        "metadata": { "source": "import" }
+                        "metadata": {
+                          "source": "import"
+                        }
                       },
-                      { "id": 456 }
+                      {
+                        "id": 456
+                      }
                     ]
                   }
                 },
@@ -2534,22 +3628,37 @@
             "description": "Block created successfully",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Block" }
+                "schema": {
+                  "$ref": "#/components/schemas/Block"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationErrorResponse" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
+          "400": {
+            "$ref": "#/components/responses/ValidationErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
           "403": {
             "description": "Cannot add to one or more channels",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" }
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
               }
             }
           },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -2559,7 +3668,14 @@
         "description": "Queues multiple blocks for asynchronous creation and connects them to one\nor more channels. Returns immediately with a `batch_id` that can be used\nto poll for status via `GET /v3/blocks/batch/{batch_id}`.\n\nDesigned for import use cases such as migrating from other services\nor re-importing Are.na exports.\n\nEach block in the `blocks` array follows the same format as single block\ncreation. Blocks are processed sequentially in the background and partial\nsuccess is supported — if some blocks fail, the successful ones are still\ncreated.\n\n**Limits:**\n- Maximum 50 blocks per request\n- Maximum 20 channels per request\n- All channels must be **private**\n\n**Batch results are available for 24 hours after submission.**\n\n**⚠️ Premium Only**: This endpoint requires a Premium subscription.\n",
         "operationId": "batchCreateBlocks",
         "tags": ["Blocks"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2567,13 +3683,17 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "channel_ids": { "$ref": "#/components/schemas/ChannelIds" },
+                  "channel_ids": {
+                    "$ref": "#/components/schemas/ChannelIds"
+                  },
                   "blocks": {
                     "type": "array",
                     "description": "Array of blocks to create",
                     "minItems": 1,
                     "maxItems": 50,
-                    "items": { "$ref": "#/components/schemas/BlockInput" }
+                    "items": {
+                      "$ref": "#/components/schemas/BlockInput"
+                    }
                   }
                 },
                 "required": ["channel_ids", "blocks"]
@@ -2610,25 +3730,40 @@
             "description": "Batch accepted for processing",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/BatchResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResponse"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequestResponse" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
+          "400": {
+            "$ref": "#/components/responses/BadRequestResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
           "403": {
             "description": "Forbidden — requires Premium subscription, or cannot add to one or more channels",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" }
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
               }
             }
           },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntityResponse"
           },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -2638,13 +3773,23 @@
         "description": "Returns the current status of a batch block creation job.\nPoll this endpoint to track progress and retrieve results.\n\nBatch results are available for 24 hours after submission.\n\n**⚠️ Premium Only**: This endpoint requires a Premium subscription.\n",
         "operationId": "getBatchStatus",
         "tags": ["Blocks"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["read"] }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["read"]
+          }
+        ],
         "parameters": [
           {
             "name": "batch_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "format": "uuid" },
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
             "description": "The batch ID returned from the batch create endpoint"
           }
         ],
@@ -2653,14 +3798,27 @@
             "description": "Batch status",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/BatchStatus" }
+                "schema": {
+                  "$ref": "#/components/schemas/BatchStatus"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -2670,20 +3828,37 @@
         "description": "Returns detailed information about a specific block by its ID. Respects visibility rules and user permissions.",
         "operationId": "getBlock",
         "tags": ["Blocks"],
-        "parameters": [{ "$ref": "#/components/parameters/IdParam" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdParam"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Block details",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Block" }
+                "schema": {
+                  "$ref": "#/components/schemas/Block"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       },
       "put": {
@@ -2691,8 +3866,19 @@
         "description": "Updates a block's metadata. Only the block owner can update it.\n\n**Authentication required.**\n",
         "operationId": "updateBlock",
         "tags": ["Blocks"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
-        "parameters": [{ "$ref": "#/components/parameters/IdParam" }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdParam"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2734,18 +3920,33 @@
             "description": "Block updated successfully",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Block" }
+                "schema": {
+                  "$ref": "#/components/schemas/Block"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationErrorResponse" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
+          "400": {
+            "$ref": "#/components/responses/ValidationErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntityResponse"
           },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -2756,10 +3957,18 @@
         "description": "Returns paginated list of channels where this block appears.\nThis shows all channels that contain this block, respecting visibility rules and user permissions.\n",
         "tags": ["Blocks"],
         "parameters": [
-          { "$ref": "#/components/parameters/IdParam" },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" },
-          { "$ref": "#/components/parameters/ConnectionSortParam" },
+          {
+            "$ref": "#/components/parameters/IdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          },
+          {
+            "$ref": "#/components/parameters/ConnectionSortParam"
+          },
           {
             "name": "filter",
             "in": "query",
@@ -2777,14 +3986,27 @@
             "description": "List of channels where this block appears",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ChannelListResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelListResponse"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -2795,24 +4017,45 @@
         "description": "Returns paginated list of comments on this block.\nComments are ordered by creation date (ascending by default, oldest first).\n",
         "tags": ["Blocks"],
         "parameters": [
-          { "$ref": "#/components/parameters/IdParam" },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" },
-          { "$ref": "#/components/parameters/ConnectionSortParam" }
+          {
+            "$ref": "#/components/parameters/IdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          },
+          {
+            "$ref": "#/components/parameters/ConnectionSortParam"
+          }
         ],
         "responses": {
           "200": {
             "description": "List of comments on this block",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CommentListResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/CommentListResponse"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       },
       "post": {
@@ -2820,8 +4063,19 @@
         "operationId": "createBlockComment",
         "description": "Creates a new comment on a block.\n\n**Authentication required.**\n\nYou can mention users in the comment body using `@username` syntax.\n",
         "tags": ["Blocks"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
-        "parameters": [{ "$ref": "#/components/parameters/IdParam" }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdParam"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2845,18 +4099,33 @@
             "description": "Comment created successfully",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Comment" }
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequestResponse" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
+          "400": {
+            "$ref": "#/components/responses/BadRequestResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntityResponse"
           },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -2866,14 +4135,38 @@
         "operationId": "deleteComment",
         "description": "Deletes a comment. Only the comment author can delete their comments.\n\n**Authentication required.**\n",
         "tags": ["Comments"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
-        "parameters": [{ "$ref": "#/components/parameters/IdParam" }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdParam"
+          }
+        ],
         "responses": {
-          "204": { "description": "Comment deleted successfully" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "204": {
+            "description": "Comment deleted successfully"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -2883,7 +4176,14 @@
         "description": "Creates a new channel owned by the authenticated user or a group they belong to.\n\n**Authentication required.**\n",
         "operationId": "createChannel",
         "tags": ["Channels"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2906,10 +4206,9 @@
                     "description": "Channel description (supports markdown)",
                     "example": "A collection of interesting links"
                   },
-                  "group_id": {
-                    "type": "integer",
-                    "description": "Group ID to create the channel under. The authenticated user must be a member of the group.\nIf not provided, the channel is owned by the authenticated user.\n",
-                    "example": 12345
+                  "owner": {
+                    "$ref": "#/components/schemas/ChannelOwnerInput",
+                    "description": "User or Group to own the channel. The authenticated user must be able to assign authorship\nto the owner: themselves, or a group they belong to. If not provided, the channel is owned\nby the authenticated user.\n"
                   },
                   "metadata": {
                     "$ref": "#/components/schemas/Metadata",
@@ -2920,7 +4219,9 @@
               "examples": {
                 "simple": {
                   "summary": "Simple channel",
-                  "value": { "title": "My New Channel" }
+                  "value": {
+                    "title": "My New Channel"
+                  }
                 },
                 "with_visibility": {
                   "summary": "Private channel",
@@ -2935,7 +4236,10 @@
                   "value": {
                     "title": "Team Resources",
                     "visibility": "closed",
-                    "group_id": 12345
+                    "owner": {
+                      "id": 12345,
+                      "type": "Group"
+                    }
                   }
                 }
               }
@@ -2947,17 +4251,30 @@
             "description": "Channel created successfully",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Channel" }
+                "schema": {
+                  "$ref": "#/components/schemas/Channel"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationErrorResponse" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
+          "400": {
+            "$ref": "#/components/responses/ValidationErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntityResponse"
           },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -2967,29 +4284,57 @@
         "description": "Returns detailed information about a specific channel by its ID or slug. Respects visibility rules and user permissions.",
         "operationId": "getChannel",
         "tags": ["Channels"],
-        "parameters": [{ "$ref": "#/components/parameters/SlugOrIdParam" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Channel details",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Channel" }
+                "schema": {
+                  "$ref": "#/components/schemas/Channel"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       },
       "put": {
         "summary": "Update a channel",
-        "description": "Updates an existing channel. Only provided fields are updated.\n\n**Authentication required.**\n",
+        "description": "Updates an existing channel. Only provided fields are updated.\nUpdating the owner requires permission to assign authorship to the target user or group.\n\n**Authentication required.**\n",
         "operationId": "updateChannel",
         "tags": ["Channels"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
-        "parameters": [{ "$ref": "#/components/parameters/SlugOrIdParam" }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3010,6 +4355,10 @@
                     "description": "Channel description (supports markdown). Pass null to clear.",
                     "example": "Updated description"
                   },
+                  "owner": {
+                    "$ref": "#/components/schemas/ChannelOwnerInput",
+                    "description": "User or Group to own the channel. The authenticated user must be able to assign authorship\nto the owner: themselves, or a group they belong to.\n"
+                  },
                   "metadata": {
                     "$ref": "#/components/schemas/MetadataInput",
                     "description": "Custom key-value metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n"
@@ -3019,11 +4368,24 @@
               "examples": {
                 "update_title": {
                   "summary": "Update title only",
-                  "value": { "title": "New Title" }
+                  "value": {
+                    "title": "New Title"
+                  }
                 },
                 "update_visibility": {
                   "summary": "Make channel private",
-                  "value": { "visibility": "private" }
+                  "value": {
+                    "visibility": "private"
+                  }
+                },
+                "update_owner": {
+                  "summary": "Transfer channel ownership to a group",
+                  "value": {
+                    "owner": {
+                      "id": 12345,
+                      "type": "Group"
+                    }
+                  }
                 },
                 "update_multiple": {
                   "summary": "Update multiple fields",
@@ -3042,18 +4404,33 @@
             "description": "Channel updated successfully",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Channel" }
+                "schema": {
+                  "$ref": "#/components/schemas/Channel"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationErrorResponse" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
+          "400": {
+            "$ref": "#/components/responses/ValidationErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntityResponse"
           },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       },
       "delete": {
@@ -3061,14 +4438,38 @@
         "description": "Deletes a channel. This can not be undone.\n\n**Authentication required.**\n",
         "operationId": "deleteChannel",
         "tags": ["Channels"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
-        "parameters": [{ "$ref": "#/components/parameters/SlugOrIdParam" }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
         "responses": {
-          "204": { "description": "Channel deleted successfully" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "204": {
+            "description": "Channel deleted successfully"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3078,7 +4479,14 @@
         "operationId": "createConnection",
         "description": "Connects a block or channel to one or more channels.\nReturns the created connection(s).\n\nSpecify target channels using either `channels` (preferred) or `channel_ids` (legacy), but not both.\nThe `channels` form allows per-channel position and connection metadata.\n\n**Authentication required.**\n",
         "tags": ["Connections"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3114,7 +4522,9 @@
                           }
                         },
                         "required": ["channel_ids"],
-                        "not": { "required": ["channels"] }
+                        "not": {
+                          "required": ["channels"]
+                        }
                       },
                       {
                         "type": "object",
@@ -3133,8 +4543,12 @@
                         "required": ["channels"],
                         "not": {
                           "anyOf": [
-                            { "required": ["channel_ids"] },
-                            { "required": ["position"] }
+                            {
+                              "required": ["channel_ids"]
+                            },
+                            {
+                              "required": ["position"]
+                            }
                           ]
                         }
                       }
@@ -3155,21 +4569,36 @@
                   "properties": {
                     "data": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/Connection" }
+                      "items": {
+                        "$ref": "#/components/schemas/Connection"
+                      }
                     }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequestResponse" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
+          "400": {
+            "$ref": "#/components/responses/BadRequestResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntityResponse"
           },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3179,20 +4608,37 @@
         "description": "Returns detailed information about a connection,\nincluding abilities (whether the current user can remove the connection).\n\nThe connection ID is included in the `connection` object when blocks/channels\nare returned as part of channel contents.\n",
         "operationId": "getConnection",
         "tags": ["Connections"],
-        "parameters": [{ "$ref": "#/components/parameters/IdParam" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdParam"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Connection details",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Connection" }
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       },
       "put": {
@@ -3200,8 +4646,19 @@
         "description": "Updates a connection's metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n\n**Authentication required.**\n",
         "operationId": "updateConnection",
         "tags": ["Connections"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
-        "parameters": [{ "$ref": "#/components/parameters/IdParam" }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdParam"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3223,18 +4680,33 @@
             "description": "Connection updated successfully",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Connection" }
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationErrorResponse" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
+          "400": {
+            "$ref": "#/components/responses/ValidationErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntityResponse"
           },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       },
       "delete": {
@@ -3242,14 +4714,38 @@
         "description": "Removes a block or channel from a channel by deleting the connection.\nThe block/channel itself is not deleted - it may still exist in other channels.\n\n**Authentication required.**\n",
         "operationId": "deleteConnection",
         "tags": ["Connections"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
-        "parameters": [{ "$ref": "#/components/parameters/IdParam" }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdParam"
+          }
+        ],
         "responses": {
-          "204": { "description": "Connection deleted successfully" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "204": {
+            "description": "Connection deleted successfully"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3259,8 +4755,19 @@
         "operationId": "moveConnection",
         "description": "Moves a connection to a new position within its channel.\nRequires sort permission on the channel.\n\n**Authentication required.**\n",
         "tags": ["Connections"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["write"] }],
-        "parameters": [{ "$ref": "#/components/parameters/IdParam" }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdParam"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3286,18 +4793,33 @@
             "description": "Connection successfully moved",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Connection" }
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequestResponse" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
+          "400": {
+            "$ref": "#/components/responses/BadRequestResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntityResponse"
           },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3308,16 +4830,26 @@
         "description": "Returns paginated contents (blocks and channels) from a channel.\nRespects visibility rules and user permissions.\n",
         "tags": ["Channels"],
         "parameters": [
-          { "$ref": "#/components/parameters/SlugOrIdParam" },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" },
-          { "$ref": "#/components/parameters/ChannelContentSortParam" },
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          },
+          {
+            "$ref": "#/components/parameters/ChannelContentSortParam"
+          },
           {
             "name": "user_id",
             "in": "query",
             "required": false,
             "description": "Filter by user who added the content",
-            "schema": { "type": "integer" },
+            "schema": {
+              "type": "integer"
+            },
             "example": 12345
           }
         ],
@@ -3332,10 +4864,21 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3346,24 +4889,45 @@
         "description": "Returns paginated list of channels where this channel appears.\nThis shows all channels that contain this channel, respecting visibility rules and user permissions.\n",
         "tags": ["Channels"],
         "parameters": [
-          { "$ref": "#/components/parameters/SlugOrIdParam" },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" },
-          { "$ref": "#/components/parameters/ConnectionSortParam" }
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          },
+          {
+            "$ref": "#/components/parameters/ConnectionSortParam"
+          }
         ],
         "responses": {
           "200": {
             "description": "List of channels where this channel appears",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ChannelListResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelListResponse"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3374,24 +4938,45 @@
         "description": "Returns paginated list of users who follow this channel.\nAll followers are users.\n",
         "tags": ["Channels"],
         "parameters": [
-          { "$ref": "#/components/parameters/SlugOrIdParam" },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" },
-          { "$ref": "#/components/parameters/ConnectionSortParam" }
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          },
+          {
+            "$ref": "#/components/parameters/ConnectionSortParam"
+          }
         ],
         "responses": {
           "200": {
             "description": "List of users who follow this channel",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/UserListResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/UserListResponse"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3399,19 +4984,229 @@
       "get": {
         "summary": "Get current user",
         "operationId": "getCurrentUser",
-        "description": "Returns the currently authenticated user's profile",
+        "description": "Returns the currently authenticated user's profile, including the\ntoken holder's `email` address. The `email` field is only exposed\nto the user themselves and is not present on `/v3/users/{id}` or on\nembedded `User` references in other resources.\n",
         "tags": ["Users"],
         "responses": {
           "200": {
             "description": "Current user details",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/User" }
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      }
+    },
+    "/v3/me/feed": {
+      "get": {
+        "summary": "Get current user's feed",
+        "operationId": "getMyFeed",
+        "description": "Returns the authenticated user's primary activity feed.\nThis feed is personalized and requires authentication.\n",
+        "tags": ["Feeds"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["read"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          },
+          {
+            "$ref": "#/components/parameters/CursorNextParam"
+          },
+          {
+            "$ref": "#/components/parameters/CursorPrevParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current user's feed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      }
+    },
+    "/v3/me/notifications": {
+      "get": {
+        "summary": "Get current user's notifications",
+        "operationId": "getMyNotifications",
+        "description": "Returns the authenticated user's notifications feed.\nEach notification includes read state for the current user.\n",
+        "tags": ["Feeds"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["read"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          },
+          {
+            "$ref": "#/components/parameters/CursorNextParam"
+          },
+          {
+            "$ref": "#/components/parameters/CursorPrevParam"
+          },
+          {
+            "name": "unread",
+            "in": "query",
+            "required": false,
+            "description": "When true, only unread notifications are returned.",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current user's notifications",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      }
+    },
+    "/v3/me/notifications/read": {
+      "post": {
+        "summary": "Mark all current user's notifications as read",
+        "operationId": "markAllMyNotificationsRead",
+        "description": "Clears the authenticated user's unread notification state and returns\nthe new unread count.\n",
+        "tags": ["Feeds"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notifications marked as read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsReadAllResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      }
+    },
+    "/v3/me/notifications/{id}/read": {
+      "post": {
+        "summary": "Mark a notification as read",
+        "operationId": "markMyNotificationRead",
+        "description": "Marks one notification activity as read for the authenticated user\nand returns the updated notification plus the new unread count.\nThe `id` is the activity id returned by `/v3/me/notifications`; the\ninternal notification bulletin id remains opaque. Returns 404 if the\nactivity is not part of the authenticated user's notifications feed.\n",
+        "tags": ["Feeds"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Activity id returned by the notifications feed.",
+            "schema": {
+              "type": "integer"
+            },
+            "example": 12345
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification marked as read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationReadResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3421,20 +5216,37 @@
         "description": "Returns detailed information about a specific user by their slug. Includes user profile, bio, and counts.",
         "operationId": "getUser",
         "tags": ["Users"],
-        "parameters": [{ "$ref": "#/components/parameters/SlugOrIdParam" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
         "responses": {
           "200": {
             "description": "User details",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/User" }
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3445,11 +5257,21 @@
         "description": "Returns paginated contents (blocks and channels) created by a user.\nUses the search API to find all content added by the specified user.\nRespects visibility rules and user permissions.",
         "tags": ["Users"],
         "parameters": [
-          { "$ref": "#/components/parameters/SlugOrIdParam" },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" },
-          { "$ref": "#/components/parameters/ContentSortParam" },
-          { "$ref": "#/components/parameters/ContentTypeFilterParam" }
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          },
+          {
+            "$ref": "#/components/parameters/ContentSortParam"
+          },
+          {
+            "$ref": "#/components/parameters/ContentTypeFilterParam"
+          }
         ],
         "responses": {
           "200": {
@@ -3462,10 +5284,21 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3476,24 +5309,45 @@
         "description": "Returns paginated list of users who follow this user.\nAll followers are users.\n",
         "tags": ["Users"],
         "parameters": [
-          { "$ref": "#/components/parameters/SlugOrIdParam" },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" },
-          { "$ref": "#/components/parameters/ConnectionSortParam" }
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          },
+          {
+            "$ref": "#/components/parameters/ConnectionSortParam"
+          }
         ],
         "responses": {
           "200": {
             "description": "List of users who follow this user",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/UserListResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/UserListResponse"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3504,16 +5358,26 @@
         "description": "Returns paginated list of users, channels, and groups that this user follows.\nCan be filtered by type to return only specific followable types.\n",
         "tags": ["Users"],
         "parameters": [
-          { "$ref": "#/components/parameters/SlugOrIdParam" },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" },
-          { "$ref": "#/components/parameters/ConnectionSortParam" },
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          },
+          {
+            "$ref": "#/components/parameters/ConnectionSortParam"
+          },
           {
             "name": "type",
             "in": "query",
             "required": false,
             "description": "Filter by followable type",
-            "schema": { "$ref": "#/components/schemas/FollowableType" },
+            "schema": {
+              "$ref": "#/components/schemas/FollowableType"
+            },
             "example": "Channel"
           }
         ],
@@ -3528,10 +5392,21 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3542,47 +5417,913 @@
         "description": "Returns paginated list of groups the user belongs to (as owner or member).\nWhen authenticated as the target user, includes private groups.\nOtherwise only public groups are returned.\n",
         "tags": ["Users"],
         "parameters": [
-          { "$ref": "#/components/parameters/SlugOrIdParam" },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" },
-          { "$ref": "#/components/parameters/GroupSortParam" }
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          },
+          {
+            "$ref": "#/components/parameters/GroupSortParam"
+          }
         ],
         "responses": {
           "200": {
             "description": "List of groups the user belongs to",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GroupListResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/GroupListResponse"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      }
+    },
+    "/v3/groups": {
+      "post": {
+        "summary": "Create a group",
+        "description": "Creates a new group owned by the authenticated user.\n\n**Authentication required.**\n",
+        "operationId": "createGroup",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Group name",
+                    "example": "Research Studio"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Group description (supports markdown)",
+                    "example": "Shared research notes and channels"
+                  },
+                  "avatar_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL of an avatar image to fetch asynchronously.",
+                    "example": "https://example.com/avatar.jpg"
+                  }
+                }
+              },
+              "examples": {
+                "simple": {
+                  "summary": "Simple group",
+                  "value": {
+                    "name": "Research Studio"
+                  }
+                },
+                "with_description": {
+                  "summary": "Group with description",
+                  "value": {
+                    "name": "Research Studio",
+                    "description": "Shared research notes and channels"
+                  }
+                },
+                "with_avatar": {
+                  "summary": "Group with avatar",
+                  "value": {
+                    "name": "Research Studio",
+                    "avatar_url": "https://example.com/avatar.jpg"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Group created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntityResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
     "/v3/groups/{id}": {
       "get": {
         "summary": "Get a group",
-        "description": "Returns detailed information about a specific group by its slug. Includes group profile, bio, owner, and counts.",
+        "description": "Returns detailed information about a specific group by its slug. Includes group profile, description, owner, counts, and permissions.",
         "operationId": "getGroup",
         "tags": ["Groups"],
-        "parameters": [{ "$ref": "#/components/parameters/SlugOrIdParam" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Group details",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Group" }
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update a group",
+        "description": "Updates an existing group. Only provided fields are updated.\n\n**Authentication required.**\n",
+        "operationId": "updateGroup",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Group name",
+                    "example": "Updated Research Studio"
+                  },
+                  "description": {
+                    "type": ["string", "null"],
+                    "description": "Group description (supports markdown). Pass null to clear.",
+                    "example": "Updated shared research notes"
+                  },
+                  "avatar_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL of an avatar image to fetch asynchronously.",
+                    "example": "https://example.com/avatar.jpg"
+                  }
+                }
+              },
+              "examples": {
+                "update_name": {
+                  "summary": "Update name only",
+                  "value": {
+                    "name": "Updated Research Studio"
+                  }
+                },
+                "update_description": {
+                  "summary": "Update description",
+                  "value": {
+                    "description": "Updated shared research notes"
+                  }
+                },
+                "clear_description": {
+                  "summary": "Clear description",
+                  "value": {
+                    "description": null
+                  }
+                },
+                "update_avatar": {
+                  "summary": "Update avatar",
+                  "value": {
+                    "avatar_url": "https://example.com/avatar.jpg"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Group updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntityResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a group",
+        "description": "Deletes a group. This can not be undone.\n\n**Authentication required.**\n",
+        "operationId": "deleteGroup",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Group deleted successfully"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      }
+    },
+    "/v3/groups/{id}/members": {
+      "get": {
+        "summary": "Get group members",
+        "operationId": "getGroupMembers",
+        "description": "Returns a paginated list of group members. The group owner is always\nreturned as the first entry on page 1 with `role: \"owner\"`, followed by\ncollaborators in newest-first order with `role: \"member\"`. The total\ncount includes the owner.\n\nGroup managers see all collaborators; other readers only see\ncollaborators with confirmed accounts. The owner is always shown.\n",
+        "tags": ["Groups"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of group members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMemberListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      },
+      "post": {
+        "summary": "Join a group",
+        "operationId": "joinGroup",
+        "description": "Adds the authenticated user to the group as a member. Requires a valid\ngroup invite token from `GET/POST /v3/groups/{id}/invite`; the token is\nthe authorization to join, so it may grant access to a private group.\nIdempotent: if the authenticated user is already the owner or a member,\nthe endpoint returns `200` with that user's group-member entry.\n\n**Authentication required.**\n",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "invite_token": {
+                    "type": "string",
+                    "description": "The group's invite code, authorizing the authenticated user to join",
+                    "example": "abc123xyz"
+                  }
+                }
+              },
+              "examples": {
+                "join": {
+                  "summary": "Join by invite token",
+                  "value": {
+                    "invite_token": "abc123xyz"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User was already the owner or a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMember"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "User joined the group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMember"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      }
+    },
+    "/v3/groups/{id}/members/me": {
+      "delete": {
+        "summary": "Leave a group",
+        "operationId": "leaveGroup",
+        "description": "Removes the authenticated user from the group. Idempotent: returns\n`204` whether or not the user was a member.\n\n**Authentication required.**\n",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "User was removed from the group, or was not a member"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      }
+    },
+    "/v3/groups/{id}/members/{user_id}": {
+      "delete": {
+        "summary": "Remove a group member",
+        "operationId": "removeGroupMember",
+        "description": "Removes a user from a group.\n\n**Authentication required.**\n",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "description": "User ID of the group member to remove",
+            "schema": {
+              "type": "integer"
+            },
+            "example": 12345
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Group member removed successfully"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      }
+    },
+    "/v3/groups/{id}/invitations": {
+      "get": {
+        "summary": "List pending group invitations",
+        "operationId": "getGroupInvitations",
+        "description": "Returns a paginated list of open (pending) membership invitations for\nthe group, newest first. Only users who can manage invitations on the\ngroup — typically the owner and existing members — may list them.\n\nUse `POST /v3/groups/{id}/invitations` to create an invitation; that\nendpoint chooses between direct add and invitation automatically based\non the follow relationship.\n\n### Invitation acceptance flow\n\nInvitees receive an email with a tokenized URL that opens the Are.na web\nUI. Accept and decline actions are handled there via GraphQL\n(`acceptMembershipInvitation` and `declineMembershipInvitation`), not\nthrough this REST API. There is no REST endpoint for invitees to list\ntheir own pending invitations today; invitation discovery is email-link\nbased.\n\n**Authentication required.**\n",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["read"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of pending invitations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipInvitationListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add or invite a group member",
+        "operationId": "createGroupInvitation",
+        "description": "Resolves a `user_id` or `email` into one of four outcomes and returns\nwhich outcome occurred via the `outcome` field. HTTP status mirrors the\noutcome: `201` when something was created (`added`, `invited`), `200`\nwhen no work was needed (`already_member`, `invitation_pending`).\n\nResolution rules:\n\n- `added`: The request targeted a `user_id` and that user already\n  follows the caller. A group membership is created immediately. The\n  \"must follow caller\" signal is treated as opt-in, so no invite/accept\n  round trip is required.\n- `invited`: A new pending invitation was created and an email was sent.\n- `invitation_pending`: An open invitation for this user or email\n  already exists; the existing invitation is returned unchanged.\n- `already_member`: The user is already a member; no action is taken.\n\nWhen invited by `email` and no user with that email exists, the caller\nmust have permission to invite new users.\n\n**Authentication required.**\n",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": ["user_id"],
+                    "properties": {
+                      "user_id": {
+                        "type": "integer",
+                        "description": "User ID to add or invite",
+                        "example": 12345
+                      }
+                    },
+                    "not": {
+                      "required": ["email"]
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["email"],
+                    "properties": {
+                      "email": {
+                        "type": "string",
+                        "format": "email",
+                        "description": "Email address to invite",
+                        "example": "invitee@example.com"
+                      }
+                    },
+                    "not": {
+                      "required": ["user_id"]
+                    }
+                  }
+                ]
+              },
+              "examples": {
+                "by_user_id": {
+                  "summary": "Add or invite by user ID",
+                  "value": {
+                    "user_id": 12345
+                  }
+                },
+                "by_email": {
+                  "summary": "Invite by email",
+                  "value": {
+                    "email": "invitee@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "No action was needed. `outcome` is either `already_member` or\n`invitation_pending`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMemberInviteResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "A membership or invitation was created. `outcome` is either `added`\nor `invited`. The created resource (member or invitation) is\nincluded in the response body.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMemberInviteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntityResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      }
+    },
+    "/v3/groups/{id}/invitations/{invitation_id}": {
+      "delete": {
+        "summary": "Revoke a pending group invitation",
+        "operationId": "revokeGroupInvitation",
+        "description": "Revokes a pending invitation so the invitee can no longer accept it.\nCan be called by the invitation creator or by any user who can manage\ninvitations on the target group.\n\nReturns `422` if the invitation is no longer pending (already accepted,\ndeclined, or revoked).\n\n**Authentication required.**\n",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "required": true,
+            "description": "ID of the invitation to revoke",
+            "schema": {
+              "type": "integer"
+            },
+            "example": 12345
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Invitation revoked successfully"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntityResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      }
+    },
+    "/v3/groups/{id}/invite": {
+      "get": {
+        "summary": "Get group invite",
+        "operationId": "getGroupInvite",
+        "description": "Returns the group's shareable invite code and public invite URL. Only\nusers who can manage the group may view the reusable invite code.\n\n**Authentication required.**\n",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["read"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Group invite details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupInvite"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create or reuse group invite",
+        "operationId": "createGroupInvite",
+        "description": "Creates the group's shareable invite code if it does not exist, or\nreturns the existing one. Only users who can manage the group may create\nor view the reusable invite code.\n\n**Authentication required.**\n",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Group invite already existed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupInvite"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Group invite created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupInvite"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete group invite",
+        "operationId": "deleteGroupInvite",
+        "description": "Deletes the group's shareable invite code. Idempotent: returns `204`\nwhether or not an invite code existed.\n\n**Authentication required.**\n",
+        "tags": ["Groups"],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["write"]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Group invite deleted, or no invite existed"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3593,11 +6334,21 @@
         "description": "Returns paginated contents (blocks and channels) created by a group.\nUses the search API to find all content added by the specified group.\nRespects visibility rules and user permissions.",
         "tags": ["Groups"],
         "parameters": [
-          { "$ref": "#/components/parameters/SlugOrIdParam" },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" },
-          { "$ref": "#/components/parameters/ContentSortParam" },
-          { "$ref": "#/components/parameters/ContentTypeFilterParam" }
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          },
+          {
+            "$ref": "#/components/parameters/ContentSortParam"
+          },
+          {
+            "$ref": "#/components/parameters/ContentTypeFilterParam"
+          }
         ],
         "responses": {
           "200": {
@@ -3610,10 +6361,21 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3624,24 +6386,45 @@
         "description": "Returns paginated list of users who follow this group.\nAll followers are users.\n",
         "tags": ["Groups"],
         "parameters": [
-          { "$ref": "#/components/parameters/SlugOrIdParam" },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" },
-          { "$ref": "#/components/parameters/ConnectionSortParam" }
+          {
+            "$ref": "#/components/parameters/SlugOrIdParam"
+          },
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          },
+          {
+            "$ref": "#/components/parameters/ConnectionSortParam"
+          }
         ],
         "responses": {
           "200": {
             "description": "List of users who follow this group",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/UserListResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/UserListResponse"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
-          "403": { "$ref": "#/components/responses/ForbiddenResponse" },
-          "404": { "$ref": "#/components/responses/NotFoundResponse" },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundResponse"
+          },
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     },
@@ -3649,16 +6432,26 @@
       "get": {
         "summary": "Search across Are.na",
         "operationId": "search",
-        "description": "Search across blocks, channels, users, and groups.\n\n**⚠️ Premium Only**: This endpoint requires a Premium subscription.\n\n**Examples:**\n- Simple: `/v3/search?query=brutalism`\n- Images only: `/v3/search?query=architecture\u0026type=Image`\n- My content: `/v3/search?query=*\u0026scope=my`\n- In a channel: `/v3/search?query=design\u0026channel_id=12345`\n- By a user: `/v3/search?query=*\u0026user_id=456`\n- PDFs sorted by date: `/v3/search?query=*\u0026ext=pdf\u0026sort=created_at_desc`\n",
+        "description": "Search across blocks, channels, users, and groups.\n\n**⚠️ Premium Only**: This endpoint requires a Premium subscription.\n\n**Examples:**\n- Simple: `/v3/search?query=brutalism`\n- Images only: `/v3/search?query=architecture&type=Image`\n- My content: `/v3/search?query=*&scope=my`\n- In a channel: `/v3/search?query=design&channel_id=12345`\n- By a user: `/v3/search?query=*&user_id=456`\n- PDFs sorted by date: `/v3/search?query=*&ext=pdf&sort=created_at_desc`\n",
         "tags": ["Search"],
-        "security": [{ "BearerAuth": [] }, { "OAuth2": ["read"] }],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2": ["read"]
+          }
+        ],
         "parameters": [
           {
             "name": "query",
             "in": "query",
             "required": false,
             "description": "The search query string. Supports full-text search across titles,\ndescriptions, and content. Use `*` as a wildcard to match everything\n(useful when filtering by type, scope, or extension).\n",
-            "schema": { "type": "string", "default": "*" },
+            "schema": {
+              "type": "string",
+              "default": "*"
+            },
             "example": "design"
           },
           {
@@ -3668,7 +6461,9 @@
             "description": "Filter results by content type. Accepts comma-separated values.\n- Block subtypes: `Text`, `Image`, `Link`, `Attachment`, `Embed`\n- Aggregate types: `Block` (all block types), `Channel`, `User`, `Group`\n- `All` returns everything (default behavior)\n",
             "schema": {
               "type": "array",
-              "items": { "$ref": "#/components/schemas/SearchTypeFilter" }
+              "items": {
+                "$ref": "#/components/schemas/SearchTypeFilter"
+              }
             },
             "style": "form",
             "explode": false,
@@ -3690,7 +6485,9 @@
             "in": "query",
             "required": false,
             "description": "Limit search to a specific user's content.",
-            "schema": { "type": "integer" },
+            "schema": {
+              "type": "integer"
+            },
             "example": 12345
           },
           {
@@ -3698,7 +6495,9 @@
             "in": "query",
             "required": false,
             "description": "Limit search to a specific group's content.",
-            "schema": { "type": "integer" },
+            "schema": {
+              "type": "integer"
+            },
             "example": 456
           },
           {
@@ -3706,7 +6505,9 @@
             "in": "query",
             "required": false,
             "description": "Limit search to a specific channel's content.",
-            "schema": { "type": "integer" },
+            "schema": {
+              "type": "integer"
+            },
             "example": 789
           },
           {
@@ -3716,7 +6517,9 @@
             "description": "Filter results by file extension. Accepts comma-separated values.\nOnly applies to Attachment and Image block types. Common extensions\ninclude: pdf, jpg, png, gif, mp4, mp3, doc, xls, etc.\n",
             "schema": {
               "type": "array",
-              "items": { "$ref": "#/components/schemas/FileExtension" }
+              "items": {
+                "$ref": "#/components/schemas/FileExtension"
+              }
             },
             "style": "form",
             "explode": false,
@@ -3738,7 +6541,10 @@
             "in": "query",
             "required": false,
             "description": "Filter to only return results updated after this timestamp.\nUseful for incremental syncing or finding recently modified content.\nFormat: ISO 8601 datetime string.\n",
-            "schema": { "type": "string", "format": "date-time" },
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
             "example": "2024-01-01T00:00:00Z"
           },
           {
@@ -3746,11 +6552,17 @@
             "in": "query",
             "required": false,
             "description": "Random seed for reproducible random ordering. Only used when\n`sort=random`. Providing the same seed will return results in\nthe same order, useful for pagination through random results.\n",
-            "schema": { "type": "integer" },
+            "schema": {
+              "type": "integer"
+            },
             "example": 1234567890
           },
-          { "$ref": "#/components/parameters/PageParam" },
-          { "$ref": "#/components/parameters/PerParam" }
+          {
+            "$ref": "#/components/parameters/PageParam"
+          },
+          {
+            "$ref": "#/components/parameters/PerParam"
+          }
         ],
         "responses": {
           "200": {
@@ -3763,13 +6575,19 @@
               }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationErrorResponse" },
-          "401": { "$ref": "#/components/responses/UnauthorizedResponse" },
+          "400": {
+            "$ref": "#/components/responses/ValidationErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedResponse"
+          },
           "403": {
             "description": "Premium subscription required",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
                 "example": {
                   "error": "Forbidden",
                   "code": 403,
@@ -3780,7 +6598,12 @@
               }
             }
           },
-          "429": { "$ref": "#/components/responses/RateLimitResponse" }
+          "408": {
+            "$ref": "#/components/responses/RequestTimeoutResponse"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitResponse"
+          }
         }
       }
     }
@@ -3825,6 +6648,10 @@
     {
       "name": "Search",
       "description": "Full-text search across blocks, channels, users, and groups. Supports\nfiltering by type, user, channel, and various metadata fields.\n\n**⚠️ Premium Only**: Search endpoints require a Premium subscription.\n"
+    },
+    {
+      "name": "Feeds",
+      "description": "Personalized cursor-paginated activity feeds for authenticated users,\nincluding the primary feed and notifications feed.\n"
     }
   ]
 }

@@ -65,6 +65,43 @@ export function registerGeneratedTools(server: McpServer): void {
           .record(z.unknown())
           .optional()
           .describe("Custom key-value metadata to set on the new block."),
+        channel_ids: z
+          .array(z.union([z.number().int(), z.string()]))
+          .min(1)
+          .max(20)
+          .optional(),
+        insert_at: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            "Position to insert the block in the channel (1-indexed).\nOnly valid when connecting to a single channel.\n",
+          ),
+        channels: z
+          .array(
+            z.object({
+              id: z
+                .union([z.number().int(), z.string()])
+                .describe("Channel ID or slug."),
+              position: z
+                .number()
+                .int()
+                .optional()
+                .describe(
+                  "Position to insert at within this channel (1-indexed).",
+                ),
+              metadata: z
+                .record(z.unknown())
+                .optional()
+                .describe("Connection metadata for this specific connection."),
+            }),
+          )
+          .min(1)
+          .max(20)
+          .optional()
+          .describe(
+            "Target channels with optional per-channel position and connection metadata.",
+          ),
       },
     },
     async (args: Record<string, unknown>, extra) => {
@@ -78,6 +115,9 @@ export function registerGeneratedTools(server: McpServer): void {
             original_source_title: args["original_source_title"],
             alt_text: args["alt_text"],
             metadata: args["metadata"],
+            channel_ids: args["channel_ids"],
+            insert_at: args["insert_at"],
+            channels: args["channels"],
           },
         } as any);
         if (error) return errorResult(error);
@@ -384,12 +424,20 @@ export function registerGeneratedTools(server: McpServer): void {
           .string()
           .optional()
           .describe("Channel description (supports markdown)"),
-        group_id: z
-          .number()
-          .int()
+        owner: z
+          .object({
+            id: z
+              .number()
+              .int()
+              .describe("ID of the User or Group to own the channel."),
+            type: z
+              .enum(["User", "Group"])
+              .optional()
+              .describe("Owner type. Defaults to User when omitted."),
+          })
           .optional()
           .describe(
-            "Group ID to create the channel under. The authenticated user must be a member of the group.\nIf not provided, the channel is owned by the authenticated user.\n",
+            "User or Group to own the channel. The authenticated user must be able to assign authorship\nto the owner: themselves, or a group they belong to. If not provided, the channel is owned\nby the authenticated user.\n",
           ),
         metadata: z
           .record(z.unknown())
@@ -404,7 +452,7 @@ export function registerGeneratedTools(server: McpServer): void {
             title: args["title"],
             visibility: args["visibility"],
             description: args["description"],
-            group_id: args["group_id"],
+            owner: args["owner"],
             metadata: args["metadata"],
           },
         } as any);
@@ -451,6 +499,21 @@ export function registerGeneratedTools(server: McpServer): void {
           .describe(
             "Channel description (supports markdown). Pass null to clear.",
           ),
+        owner: z
+          .object({
+            id: z
+              .number()
+              .int()
+              .describe("ID of the User or Group to own the channel."),
+            type: z
+              .enum(["User", "Group"])
+              .optional()
+              .describe("Owner type. Defaults to User when omitted."),
+          })
+          .optional()
+          .describe(
+            "User or Group to own the channel. The authenticated user must be able to assign authorship\nto the owner: themselves, or a group they belong to.\n",
+          ),
         metadata: z
           .record(z.unknown())
           .optional()
@@ -469,6 +532,7 @@ export function registerGeneratedTools(server: McpServer): void {
             title: args["title"],
             visibility: args["visibility"],
             description: args["description"],
+            owner: args["owner"],
             metadata: args["metadata"],
           },
         } as any);
@@ -512,6 +576,43 @@ export function registerGeneratedTools(server: McpServer): void {
         connectable_type: z
           .enum(["Block", "Channel"])
           .describe("Type of the connectable."),
+        channel_ids: z
+          .array(z.union([z.number().int(), z.string()]))
+          .min(1)
+          .max(20)
+          .optional(),
+        position: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            "Position to insert at within the channel (1-indexed).\nOnly valid when connecting to a single channel.\n",
+          ),
+        channels: z
+          .array(
+            z.object({
+              id: z
+                .union([z.number().int(), z.string()])
+                .describe("Channel ID or slug."),
+              position: z
+                .number()
+                .int()
+                .optional()
+                .describe(
+                  "Position to insert at within this channel (1-indexed).",
+                ),
+              metadata: z
+                .record(z.unknown())
+                .optional()
+                .describe("Connection metadata for this specific connection."),
+            }),
+          )
+          .min(1)
+          .max(20)
+          .optional()
+          .describe(
+            "Target channels with optional per-channel position and connection metadata.",
+          ),
       },
     },
     async (args: Record<string, unknown>, extra) => {
@@ -520,6 +621,9 @@ export function registerGeneratedTools(server: McpServer): void {
           body: {
             connectable_id: args["connectable_id"],
             connectable_type: args["connectable_type"],
+            channel_ids: args["channel_ids"],
+            position: args["position"],
+            channels: args["channels"],
           },
         } as any);
         if (error) return errorResult(error);
@@ -787,12 +891,145 @@ export function registerGeneratedTools(server: McpServer): void {
     "getCurrentUser",
     {
       description:
-        "Get current user — Returns the currently authenticated user's profile",
+        "Get current user — Returns the currently authenticated user's profile, including the token holder's `email` address.",
       inputSchema: {},
     },
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/me");
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "getMyFeed",
+    {
+      description:
+        "Get current user's feed — Returns the authenticated user's primary activity feed.",
+      inputSchema: {
+        limit: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of feed items to return (max 100)"),
+        next: z
+          .string()
+          .optional()
+          .describe(
+            'Load the **next** page (toward older items — the "load more"\ndirection, since feeds are ordered newest-first). Pass back the\n`meta.next_cursor` from a previous response.\n',
+          ),
+        prev: z
+          .string()
+          .optional()
+          .describe(
+            "Load the **previous** page (toward newer items). Pass back the\n`meta.prev_cursor` from a previous response.\n",
+          ),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.GET("/v3/me/feed", {
+          params: {
+            query: {
+              limit: args["limit"],
+              next: args["next"],
+              prev: args["prev"],
+            },
+          },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "getMyNotifications",
+    {
+      description:
+        "Get current user's notifications — Returns the authenticated user's notifications feed.",
+      inputSchema: {
+        limit: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of feed items to return (max 100)"),
+        next: z
+          .string()
+          .optional()
+          .describe(
+            'Load the **next** page (toward older items — the "load more"\ndirection, since feeds are ordered newest-first). Pass back the\n`meta.next_cursor` from a previous response.\n',
+          ),
+        prev: z
+          .string()
+          .optional()
+          .describe(
+            "Load the **previous** page (toward newer items). Pass back the\n`meta.prev_cursor` from a previous response.\n",
+          ),
+        unread: z
+          .boolean()
+          .optional()
+          .describe("When true, only unread notifications are returned."),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.GET("/v3/me/notifications", {
+          params: {
+            query: {
+              limit: args["limit"],
+              next: args["next"],
+              prev: args["prev"],
+              unread: args["unread"],
+            },
+          },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "markAllMyNotificationsRead",
+    {
+      description:
+        "Mark all current user's notifications as read — Clears the authenticated user's unread notification state and returns the new unread count.",
+      inputSchema: {},
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.POST("/v3/me/notifications/read");
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "markMyNotificationRead",
+    {
+      description:
+        "Mark a notification as read — Marks one notification activity as read for the authenticated user and returns the updated notification plus the new unread count.",
+      inputSchema: {
+        id: z
+          .number()
+          .int()
+          .describe("Activity id returned by the notifications feed."),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.POST(
+          "/v3/me/notifications/{id}/read",
+          {
+            params: {
+              path: { id: args["id"] },
+            },
+          } as any,
+        );
         if (error) return errorResult(error);
         return textResult(data);
       }).catch((err) => errorResult(err.message));
@@ -1008,6 +1245,38 @@ export function registerGeneratedTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "createGroup",
+    {
+      description:
+        "Create a group — Creates a new group owned by the authenticated user.",
+      inputSchema: {
+        name: z.string().describe("Group name"),
+        description: z
+          .string()
+          .optional()
+          .describe("Group description (supports markdown)"),
+        avatar_url: z
+          .string()
+          .optional()
+          .describe("URL of an avatar image to fetch asynchronously."),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.POST("/v3/groups", {
+          body: {
+            name: args["name"],
+            description: args["description"],
+            avatar_url: args["avatar_url"],
+          },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
     "getGroup",
     {
       description:
@@ -1019,6 +1288,343 @@ export function registerGeneratedTools(server: McpServer): void {
     async (args: Record<string, unknown>, extra) => {
       return withArenaClient(extra, async (client) => {
         const { data, error } = await client.GET("/v3/groups/{id}", {
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "updateGroup",
+    {
+      description: "Update a group — Updates an existing group.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        name: z.string().optional().describe("Group name"),
+        description: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(
+            "Group description (supports markdown). Pass null to clear.",
+          ),
+        avatar_url: z
+          .string()
+          .optional()
+          .describe("URL of an avatar image to fetch asynchronously."),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.PUT("/v3/groups/{id}", {
+          params: {
+            path: { id: args["id"] },
+          },
+          body: {
+            name: args["name"],
+            description: args["description"],
+            avatar_url: args["avatar_url"],
+          },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "deleteGroup",
+    {
+      description: "Delete a group — Deletes a group.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.DELETE("/v3/groups/{id}", {
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "getGroupMembers",
+    {
+      description:
+        "Get group members — Returns a paginated list of group members.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.GET("/v3/groups/{id}/members", {
+          params: {
+            path: { id: args["id"] },
+            query: { page: args["page"], per: args["per"] },
+          },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "joinGroup",
+    {
+      description:
+        "Join a group — Adds the authenticated user to the group as a member.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        invite_token: z
+          .string()
+          .optional()
+          .describe(
+            "The group's invite code, authorizing the authenticated user to join",
+          ),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.POST("/v3/groups/{id}/members", {
+          params: {
+            path: { id: args["id"] },
+          },
+          body: { invite_token: args["invite_token"] },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "leaveGroup",
+    {
+      description:
+        "Leave a group — Removes the authenticated user from the group.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.DELETE(
+          "/v3/groups/{id}/members/me",
+          {
+            params: {
+              path: { id: args["id"] },
+            },
+          } as any,
+        );
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "removeGroupMember",
+    {
+      description: "Remove a group member — Removes a user from a group.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        user_id: z
+          .number()
+          .int()
+          .describe("User ID of the group member to remove"),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.DELETE(
+          "/v3/groups/{id}/members/{user_id}",
+          {
+            params: {
+              path: { id: args["id"], user_id: args["user_id"] },
+            },
+          } as any,
+        );
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "getGroupInvitations",
+    {
+      description:
+        "List pending group invitations — Returns a paginated list of open (pending) membership invitations for the group, newest first.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe("Page number for pagination"),
+        per: z
+          .number()
+          .int()
+          .optional()
+          .describe("Number of items per page (max 100)"),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.GET(
+          "/v3/groups/{id}/invitations",
+          {
+            params: {
+              path: { id: args["id"] },
+              query: { page: args["page"], per: args["per"] },
+            },
+          } as any,
+        );
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "createGroupInvitation",
+    {
+      description:
+        "Add or invite a group member — Resolves a `user_id` or `email` into one of four outcomes and returns which outcome occurred via the `outcome` field.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        user_id: z
+          .number()
+          .int()
+          .optional()
+          .describe("User ID to add or invite"),
+        email: z.string().optional().describe("Email address to invite"),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.POST(
+          "/v3/groups/{id}/invitations",
+          {
+            params: {
+              path: { id: args["id"] },
+            },
+            body: { user_id: args["user_id"], email: args["email"] },
+          } as any,
+        );
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "revokeGroupInvitation",
+    {
+      description:
+        "Revoke a pending group invitation — Revokes a pending invitation so the invitee can no longer accept it.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        invitation_id: z
+          .number()
+          .int()
+          .describe("ID of the invitation to revoke"),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.DELETE(
+          "/v3/groups/{id}/invitations/{invitation_id}",
+          {
+            params: {
+              path: { id: args["id"], invitation_id: args["invitation_id"] },
+            },
+          } as any,
+        );
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "getGroupInvite",
+    {
+      description:
+        "Get group invite — Returns the group's shareable invite code and public invite URL.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.GET("/v3/groups/{id}/invite", {
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "createGroupInvite",
+    {
+      description:
+        "Create or reuse group invite — Creates the group's shareable invite code if it does not exist, or returns the existing one.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.POST("/v3/groups/{id}/invite", {
+          params: {
+            path: { id: args["id"] },
+          },
+        } as any);
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "deleteGroupInvite",
+    {
+      description:
+        "Delete group invite — Deletes the group's shareable invite code.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.DELETE("/v3/groups/{id}/invite", {
           params: {
             path: { id: args["id"] },
           },
