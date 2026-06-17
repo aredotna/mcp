@@ -38,6 +38,11 @@ interface Operation {
   };
 }
 
+interface FlattenedObjectSchema {
+  properties: Record<string, Record<string, unknown>>;
+  required: Set<string>;
+}
+
 type HttpMethod = "get" | "post" | "put" | "delete" | "patch";
 
 const HTTP_METHODS: HttpMethod[] = ["get", "post", "put", "delete", "patch"];
@@ -70,6 +75,76 @@ function resolveParam(
     return resolveRef(param.$ref, spec) as Param;
   }
   return param;
+}
+
+function resolveSchema(
+  schema: Record<string, unknown>,
+  spec: Record<string, unknown>,
+): Record<string, unknown> {
+  if (typeof schema.$ref === "string") {
+    return resolveRef(schema.$ref, spec) as Record<string, unknown>;
+  }
+  return schema;
+}
+
+function mergeFlattenedSchema(
+  target: FlattenedObjectSchema,
+  source: FlattenedObjectSchema,
+): void {
+  Object.assign(target.properties, source.properties);
+  for (const key of source.required) {
+    target.required.add(key);
+  }
+}
+
+function flattenObjectSchema(
+  schema: Record<string, unknown>,
+  spec: Record<string, unknown>,
+  includeRequired = true,
+): FlattenedObjectSchema {
+  const resolved = resolveSchema(schema, spec);
+  const flattened: FlattenedObjectSchema = {
+    properties: {},
+    required: new Set(),
+  };
+
+  if (Array.isArray(resolved.allOf)) {
+    for (const subSchema of resolved.allOf as Record<string, unknown>[]) {
+      mergeFlattenedSchema(
+        flattened,
+        flattenObjectSchema(subSchema, spec, includeRequired),
+      );
+    }
+  }
+
+  if (resolved.type === "object" && resolved.properties) {
+    Object.assign(
+      flattened.properties,
+      resolved.properties as Record<string, Record<string, unknown>>,
+    );
+
+    if (includeRequired) {
+      for (const key of (resolved.required as string[] | undefined) ?? []) {
+        flattened.required.add(key);
+      }
+    }
+  }
+
+  for (const compositionKey of ["oneOf", "anyOf"] as const) {
+    if (!Array.isArray(resolved[compositionKey])) continue;
+
+    for (const variant of resolved[compositionKey] as Record<
+      string,
+      unknown
+    >[]) {
+      mergeFlattenedSchema(
+        flattened,
+        flattenObjectSchema(variant, spec, false),
+      );
+    }
+  }
+
+  return flattened;
 }
 
 interface ToolDef {
@@ -132,47 +207,17 @@ function buildToolDef(
   const bodyRequired: string[] = [];
 
   if (bodySchema) {
-    const resolved = bodySchema.$ref
-      ? (resolveRef(bodySchema.$ref as string, spec) as Record<string, unknown>)
-      : (bodySchema as Record<string, unknown>);
+    const flattenedSchema = flattenObjectSchema(
+      bodySchema as Record<string, unknown>,
+      spec,
+    );
 
-    let effectiveSchema = resolved;
-
-    if (resolved.allOf) {
-      const merged: Record<string, unknown> = {};
-      const mergedRequired: string[] = [];
-      for (const sub of resolved.allOf as Record<string, unknown>[]) {
-        const subResolved = sub.$ref
-          ? (resolveRef(sub.$ref as string, spec) as Record<string, unknown>)
-          : sub;
-        if (subResolved.properties) {
-          Object.assign(
-            merged,
-            subResolved.properties as Record<string, unknown>,
-          );
-        }
-        if (subResolved.required) {
-          mergedRequired.push(...(subResolved.required as string[]));
-        }
-      }
-      effectiveSchema = {
-        type: "object",
-        properties: merged,
-        required: mergedRequired,
-      };
-    }
-
-    if (effectiveSchema.type === "object" && effectiveSchema.properties) {
+    if (Object.keys(flattenedSchema.properties).length > 0) {
       hasBody = true;
-      const props = effectiveSchema.properties as Record<
-        string,
-        Record<string, unknown>
-      >;
-      const reqSet = new Set(
-        (effectiveSchema.required as string[] | undefined) ?? [],
-      );
 
-      for (const [key, propSchema] of Object.entries(props)) {
+      for (const [key, propSchema] of Object.entries(
+        flattenedSchema.properties,
+      )) {
         if (pathParams.includes(key) || queryParams.includes(key)) {
           continue;
         }
@@ -184,7 +229,7 @@ function buildToolDef(
           },
         );
 
-        if (!reqSet.has(key)) {
+        if (!flattenedSchema.required.has(key)) {
           zodType += ".optional()";
         }
         if (propSchema.description) {
@@ -193,7 +238,7 @@ function buildToolDef(
 
         zodFields.push(`    ${JSON.stringify(key)}: ${zodType}`);
         bodyProperties.push(key);
-        if (reqSet.has(key)) bodyRequired.push(key);
+        if (flattenedSchema.required.has(key)) bodyRequired.push(key);
       }
     }
   }
@@ -323,6 +368,10 @@ function main() {
   lines.push(``);
 
   writeFileSync(TOOLS_PATH, lines.join("\n"));
+  writeFileSync(SPEC_PATH, `${JSON.stringify(spec, null, 2)}\n`);
+  execSync(`npx prettier --write ${TOOLS_PATH} ${SPEC_PATH}`, {
+    stdio: "inherit",
+  });
   console.log(`Generated ${tools.length} tools → ${TOOLS_PATH}`);
 }
 
