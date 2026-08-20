@@ -61,6 +61,12 @@ export function registerGeneratedTools(server: McpServer): void {
           .string()
           .optional()
           .describe("Alt text for images (accessibility)"),
+        cover_url: z
+          .string()
+          .optional()
+          .describe(
+            "Optional cover image URL to use as the visual preview for Link, Attachment, and Embed blocks (overrides the auto-generated screenshot/thumbnail). Ignored for Image and Text blocks.",
+          ),
         metadata: z
           .record(z.unknown())
           .optional()
@@ -114,6 +120,7 @@ export function registerGeneratedTools(server: McpServer): void {
             original_source_url: args["original_source_url"],
             original_source_title: args["original_source_title"],
             alt_text: args["alt_text"],
+            cover_url: args["cover_url"],
             metadata: args["metadata"],
             channel_ids: args["channel_ids"],
             insert_at: args["insert_at"],
@@ -164,6 +171,12 @@ export function registerGeneratedTools(server: McpServer): void {
                 .string()
                 .optional()
                 .describe("Alt text for images (accessibility)"),
+              cover_url: z
+                .string()
+                .optional()
+                .describe(
+                  "Optional cover image URL to use as the visual preview for Link, Attachment, and Embed blocks (overrides the auto-generated screenshot/thumbnail). Ignored for Image and Text blocks.",
+                ),
               metadata: z
                 .record(z.unknown())
                 .optional()
@@ -1259,6 +1272,12 @@ export function registerGeneratedTools(server: McpServer): void {
           .string()
           .optional()
           .describe("URL of an avatar image to fetch asynchronously."),
+        default_role: z
+          .enum(["viewer", "member", "admin"])
+          .optional()
+          .describe(
+            "Role assigned to new members joining the group. Defaults to `member`.",
+          ),
       },
     },
     async (args: Record<string, unknown>, extra) => {
@@ -1268,6 +1287,7 @@ export function registerGeneratedTools(server: McpServer): void {
             name: args["name"],
             description: args["description"],
             avatar_url: args["avatar_url"],
+            default_role: args["default_role"],
           },
         } as any);
         if (error) return errorResult(error);
@@ -1316,6 +1336,10 @@ export function registerGeneratedTools(server: McpServer): void {
           .string()
           .optional()
           .describe("URL of an avatar image to fetch asynchronously."),
+        default_role: z
+          .enum(["viewer", "member", "admin"])
+          .optional()
+          .describe("Role assigned to new members joining the group"),
       },
     },
     async (args: Record<string, unknown>, extra) => {
@@ -1328,6 +1352,7 @@ export function registerGeneratedTools(server: McpServer): void {
             name: args["name"],
             description: args["description"],
             avatar_url: args["avatar_url"],
+            default_role: args["default_role"],
           },
         } as any);
         if (error) return errorResult(error);
@@ -1464,6 +1489,37 @@ export function registerGeneratedTools(server: McpServer): void {
             params: {
               path: { id: args["id"], user_id: args["user_id"] },
             },
+          } as any,
+        );
+        if (error) return errorResult(error);
+        return textResult(data);
+      }).catch((err) => errorResult(err.message));
+    },
+  );
+
+  server.registerTool(
+    "updateGroupMember",
+    {
+      description:
+        "Update a group member's role — Updates a group member's role.",
+      inputSchema: {
+        id: z.string().describe("Resource ID or slug"),
+        user_id: z
+          .number()
+          .int()
+          .describe("User ID of the group member to update"),
+        role: z.enum(["viewer", "member", "admin"]),
+      },
+    },
+    async (args: Record<string, unknown>, extra) => {
+      return withArenaClient(extra, async (client) => {
+        const { data, error } = await client.PATCH(
+          "/v3/groups/{id}/members/{user_id}",
+          {
+            params: {
+              path: { id: args["id"], user_id: args["user_id"] },
+            },
+            body: { role: args["role"] },
           } as any,
         );
         if (error) return errorResult(error);
