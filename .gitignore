@@ -1,4 +1,5 @@
-node_modules/
-dist/
-.wrangler/
+.cursor
 .dev.vars
+.wrangler/
+dist/
+node_modules/
