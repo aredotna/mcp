@@ -1139,12 +1139,12 @@ export interface components {
          */
         tier: components["schemas"]["UserTier"];
         /**
-         * @description Request limit per minute for this tier
+         * @description Binding request limit for this rejection
          * @example 30
          */
         limit: number;
         /**
-         * @description Time window for rate limits
+         * @description Time window for the binding rate limit bucket
          * @example 1 minute
          */
         limit_window?: string;
@@ -1165,6 +1165,29 @@ export interface components {
            *     }
            */
           limits?: Record<string, never>;
+          /**
+           * @example {
+           *       "guest": {
+           *         "read_minute": 30
+           *       },
+           *       "free": {
+           *         "read_minute": 120,
+           *         "write_minute": 30,
+           *         "write_hour": 300
+           *       },
+           *       "premium": {
+           *         "read_minute": 300,
+           *         "write_minute": 60,
+           *         "write_hour": 1500
+           *       },
+           *       "supporter": {
+           *         "read_minute": 600,
+           *         "write_minute": 120,
+           *         "write_hour": 4000
+           *       }
+           *     }
+           */
+          detailed_limits?: Record<string, never>;
           upgrade_path?: {
             /** @example Guest (30 req/min) */
             current?: string;
@@ -1262,6 +1285,11 @@ export interface components {
        * @example john-doe
        */
       slug: string;
+      /**
+       * @description User's username (either automatically generated or customized)
+       * @example john-doe
+       */
+      readonly username?: string | null;
       /**
        * Format: uri
        * @description URL to user's avatar image
@@ -3047,17 +3075,17 @@ export interface components {
     RateLimitResponse: {
       headers: {
         /**
-         * @description Seconds until the current rate limit window resets
+         * @description Seconds until the binding rate limit bucket resets
          * @example 37
          */
         "Retry-After"?: string;
         /**
-         * @description Request limit per minute
+         * @description Binding bucket limit
          * @example 30
          */
         "X-RateLimit-Limit"?: string;
         /**
-         * @description Requests left in the current window
+         * @description Units left in the binding bucket
          * @example 0
          */
         "X-RateLimit-Remaining"?: string;
@@ -3067,15 +3095,30 @@ export interface components {
          */
         "X-RateLimit-Tier"?: string;
         /**
-         * @description Time window in seconds
+         * @description Binding bucket window in seconds
          * @example 60
          */
         "X-RateLimit-Window"?: string;
         /**
-         * @description Unix timestamp when the current window resets
+         * @description Unix timestamp when the binding bucket resets
          * @example 1700000100
          */
         "X-RateLimit-Reset"?: string;
+        /**
+         * @description Binding bucket name
+         * @example read-minute
+         */
+        "X-RateLimit-Bucket"?: string;
+        /**
+         * @description Cost of the current request in budget units
+         * @example 1
+         */
+        "X-RateLimit-Cost"?: string;
+        /**
+         * @description Budget policy for this request class
+         * @example 30;w=60
+         */
+        "X-RateLimit-Policy"?: string;
         [name: string]: unknown;
       };
       content: {

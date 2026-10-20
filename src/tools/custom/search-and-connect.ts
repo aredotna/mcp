@@ -67,27 +67,24 @@ export function registerSearchAndConnect(server: McpServer): void {
 
         if (searchError) return errorResult(searchError);
 
-        const items =
-          (searchData as { data?: Array<{ id: number; class?: string }> })
-            ?.data ?? [];
+        const items = searchData?.data ?? [];
 
         const connected: Array<{ id: number; type: string }> = [];
-        const skipped: Array<{ id: number; class?: string }> = [];
+        const skipped: Array<{ id: number; type: string }> = [];
         const errors: string[] = [];
 
         for (const item of items) {
-          if (!item.class || !CONNECTABLE_TYPES.has(item.class)) {
-            skipped.push({ id: item.id, class: item.class });
+          if (!item.type || !CONNECTABLE_TYPES.has(item.type)) {
+            skipped.push({ id: item.id, type: item.type });
             continue;
           }
 
-          const connectableType =
-            item.class === "Channel" ? "Channel" : "Block";
+          const connectableType = item.type === "Channel" ? "Channel" : "Block";
 
           const { error: connectError } = await client.POST("/v3/connections", {
             body: {
               connectable_id: item.id,
-              connectable_type: connectableType as "Block" | "Channel",
+              connectable_type: connectableType,
               channel_ids: [args.target_channel_id],
             },
           });

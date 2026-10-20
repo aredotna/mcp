@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { jsonSchemaToZodString } from "../src/lib/json-schema-to-zod";
 
 const SPEC_URL = "https://api.are.na/v3/openapi.json";
@@ -304,17 +304,32 @@ function generateHandler(tool: ToolDef): string {
 }
 
 function main() {
-  console.log("Fetching OpenAPI spec...");
-  execSync(`curl -s ${SPEC_URL} -o ${SPEC_PATH}`);
+  const offline = process.argv.includes("--offline");
+  console.log(
+    offline ? "Using checked-in OpenAPI spec..." : "Fetching OpenAPI spec...",
+  );
+  const spec = JSON.parse(
+    offline
+      ? readFileSync(SPEC_PATH, "utf-8")
+      : execFileSync(
+          "curl",
+          ["--fail", "--silent", "--show-error", "--location", SPEC_URL],
+          {
+            encoding: "utf-8",
+          },
+        ),
+  ) as Record<string, unknown>;
+  if (!spec.openapi || !spec.paths || !spec.components) {
+    throw new Error(
+      "Expected an OpenAPI specification with paths and components",
+    );
+  }
+  writeFileSync(SPEC_PATH, `${JSON.stringify(spec, null, 2)}\n`);
 
   console.log("Generating TypeScript types...");
   execSync(`npx openapi-typescript ${SPEC_PATH} -o ${TYPES_PATH}`);
 
   console.log("Generating tool registrations...");
-  const spec = JSON.parse(readFileSync(SPEC_PATH, "utf-8")) as Record<
-    string,
-    unknown
-  >;
   const paths = spec.paths as Record<string, Record<string, Operation>>;
 
   const tools: ToolDef[] = [];
@@ -369,7 +384,7 @@ function main() {
 
   writeFileSync(TOOLS_PATH, lines.join("\n"));
   writeFileSync(SPEC_PATH, `${JSON.stringify(spec, null, 2)}\n`);
-  execSync(`npx prettier --write ${TOOLS_PATH} ${SPEC_PATH}`, {
+  execSync(`npx prettier --write ${TOOLS_PATH} ${SPEC_PATH} ${TYPES_PATH}`, {
     stdio: "inherit",
   });
   console.log(`Generated ${tools.length} tools → ${TOOLS_PATH}`);

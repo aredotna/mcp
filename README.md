@@ -1,6 +1,6 @@
 # @aredotna/mcp
 
-MCP server for the [Are.na](https://www.are.na) API. Provides 40+ auto-generated tools from the OpenAPI spec plus custom composite tools.
+MCP server for the [Are.na](https://www.are.na) API. Provides 50 auto-generated tools from the OpenAPI spec plus custom composite tools.
 
 ## Quick start
 
@@ -208,4 +208,10 @@ When the Are.na API spec changes:
 yarn generate
 ```
 
-This fetches the latest spec and regenerates TypeScript types and tool registrations.
+This fetches the latest spec and regenerates TypeScript types and tool registrations. To regenerate from the checked-in spec without fetching it again:
+
+```bash
+yarn generate --offline
+```
+
+The server uses `openapi-fetch` with generated types directly. Custom tools use the same generated response types as the endpoint tools.
