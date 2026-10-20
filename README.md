@@ -4,63 +4,134 @@ MCP server for the [Are.na](https://www.are.na) API. Provides 50 auto-generated 
 
 ## Quick start
 
-The hosted server is available at `https://mcp.are.na/mcp`.
+Connect your app to the hosted server and sign in with your Are.na account:
 
-### Claude Desktop (connector)
+```text
+https://mcp.are.na/mcp
+```
 
-The easiest way to connect. Go to **Settings > Connectors > Add custom connector** and enter:
+Use **OAuth** when asked for authentication. Hosted setup does not require a personal access token, a local installation, or your own OAuth application.
 
-- **Name**: `Are.na`
-- **Remote MCP server URL**: `https://mcp.are.na/mcp`
+| App                                        | Setup                                              |
+| ------------------------------------------ | -------------------------------------------------- |
+| [Claude](#claude-web-desktop-and-cowork)   | Add a custom connector and sign in                 |
+| [ChatGPT](#chatgpt)                        | Add a custom MCP server as a plugin and install it |
+| [Claude Code](#claude-code)                | Add the URL with the CLI, then authenticate        |
+| [Codex desktop / IDE](#codex-desktop--ide) | Add a Streamable HTTP server in settings           |
+| [Codex CLI](#codex-cli)                    | Add the URL with the CLI, then log in              |
+| [Cursor](#cursor)                          | Open the install link, then sign in                |
 
-Leave the OAuth Client ID and Secret fields blank — the server supports Dynamic Client Registration. Click **Add**, then authorize with your Are.na account when prompted.
+Instructions checked against official documentation on **October 20, 2026**. App labels and availability can vary by version and workspace policy. These are custom-server setup instructions; they do not imply an approved Are.na directory listing.
 
-### Claude Desktop (config file)
+### Claude (web, desktop, and Cowork)
 
-You can also add the server directly in `claude_desktop_config.json`. If your version supports the `url` format:
+1. Open **Customize > Connectors**, then **+ Add > Add custom connector**.
+2. Enter **Are.na** and `https://mcp.are.na/mcp`, then continue.
+3. Review the detected OAuth settings. Choose **Sign in now** and, if shown, **Register automatically** under **OAuth client**.
+4. Finish adding the connector and sign in to Are.na. Select **Connect** if sign-in has not started.
+5. Enable Are.na in the conversation's connectors menu.
+
+The server currently supports automatic registration (DCR), not **Use Claude's published identity**. In older dialogs with optional OAuth Client ID and Secret fields, leave both blank.
+
+On Team or Enterprise, an authorized administrator must add the connector under **Organization settings > Connectors** first; each member then connects their own Are.na account. Claude currently allows one custom connector on Free accounts.
+
+[Claude's current setup guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)
+
+### ChatGPT
+
+1. Open [ChatGPT Plugins](https://chatgpt.com/plugins), select **+**, then **Add custom MCP server**.
+2. Name it **Are.na**. Suggested description: “Search Are.na, explore channels, and save and organize blocks.”
+3. Enter `https://mcp.are.na/mcp` as the public server URL and choose **OAuth**. Use dynamic client registration if a registration choice is shown; no client ID or secret needs to be supplied manually.
+4. Review the permissions and warning, then select **Create as a plugin**. Complete Are.na sign-in when prompted.
+5. Review the discovered tools and install the resulting plugin. In a new chat, type **@** and select **Are.na**.
+
+Creating custom plugins is subject to account and workspace permissions. If the option is missing, check with your workspace administrator. The current documented route is Plugins; older instructions referring to Connectors or Apps developer mode describe an earlier interface.
+
+[OpenAI's current connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt)
+
+### Claude Code
+
+Add Are.na for your user account, available across projects:
+
+```bash
+claude mcp add --transport http --scope user arena https://mcp.are.na/mcp
+```
+
+Open Claude Code, run `/mcp`, select **arena**, and follow the authentication flow. To configure only the current project locally, omit `--scope user`.
+
+[Claude Code MCP documentation](https://code.claude.com/docs/en/mcp)
+
+### Codex desktop / IDE
+
+1. In the desktop app, open **Settings > MCP servers > Add server** (some versions label this **Add custom MCP**). In the IDE extension, open the gear menu and select **MCP servers**.
+2. Set the name to **arena**, transport to **Streamable HTTP**, and URL to `https://mcp.are.na/mcp`.
+3. Save, then use **Restart** / **Restart extension** if offered.
+4. Select **Authenticate** for the server and sign in to Are.na.
+
+Leave bearer-token and custom-header fields empty for OAuth. Local desktop, CLI, and IDE clients share MCP configuration on the same Codex host; ChatGPT web setup is separate.
+
+[OpenAI's desktop, IDE, and CLI MCP guide](https://learn.chatgpt.com/docs/extend/mcp)
+
+### Codex CLI
+
+```bash
+codex mcp add arena --url https://mcp.are.na/mcp
+codex mcp login arena
+```
+
+Alternatively, add this to `~/.codex/config.toml`, then run the login command:
+
+```toml
+[mcp_servers.arena]
+url = "https://mcp.are.na/mcp"
+```
+
+Use `/mcp` in the Codex TUI to check the connection.
+
+### Cursor
+
+[Add Are.na to Cursor](https://cursor.com/en/install-mcp?name=arena&config=eyJ1cmwiOiJodHRwczovL21jcC5hcmUubmEvbWNwIn0%3D), approve the server installation, then complete OAuth sign-in when Cursor prompts you.
+
+If the link does not open Cursor, merge this entry into `~/.cursor/mcp.json` for all projects, or `.cursor/mcp.json` for one project:
 
 ```json
 {
   "mcpServers": {
     "arena": {
-      "type": "http",
-      "url": "https://mcp.are.na/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_ARENA_TOKEN"
-      }
+      "url": "https://mcp.are.na/mcp"
     }
   }
 }
 ```
 
-Get a personal access token from [are.na/settings/personal-access-tokens](https://www.are.na/settings/personal-access-tokens).
+Open Cursor's MCP settings and connect **arena** if sign-in has not started. No `Authorization` header or personal access token is needed for OAuth.
 
-If your version only supports `command` (stdio), you can use [mcp-proxy](https://github.com/sparfenyuk/mcp-proxy) to bridge to the remote server. Install [uv](https://docs.astral.sh/uv/) first (`brew install uv`), then:
+[Cursor MCP documentation](https://cursor.com/docs/mcp) · [Install-link format](https://cursor.com/docs/mcp/install-links)
 
-```json
-{
-  "mcpServers": {
-    "arena": {
-      "command": "/opt/homebrew/bin/uvx",
-      "args": [
-        "mcp-proxy",
-        "--transport",
-        "streamablehttp",
-        "-H",
-        "Authorization",
-        "Bearer YOUR_ARENA_TOKEN",
-        "https://mcp.are.na/mcp"
-      ]
-    }
-  }
-}
-```
+### Try it
 
-> **Note:** Use the full path to `uvx` (e.g. `/opt/homebrew/bin/uvx`). Claude Desktop may not have `uvx` on its `PATH`.
+Start with a read-only request:
 
-### Claude Desktop (local)
+> Search Are.na for channels about concrete poetry and show me five links.
 
-To run the server locally via stdio, clone the repo, run `yarn install && yarn generate`, then use absolute paths in your config:
+Then try a channel you know:
+
+> Summarize this Are.na channel: [paste a channel URL].
+
+### Connection help
+
+- Use the full `https://mcp.are.na/mcp` URL, including `/mcp`, and select Streamable HTTP if asked for a transport.
+- If tools are missing, check that Are.na is connected and enabled in the chat. In ChatGPT, refresh the custom connection's metadata and start a new chat after server updates.
+- If sign-in fails with an unknown client, choose automatic registration in Claude and reconnect. The current server does not support published client identities (CIMD).
+- If a workspace hides custom-server setup, its administrator needs to enable or provision the connection.
+
+## Advanced: local server and access tokens
+
+For development or clients that need a local stdio process, follow [Development](#development), then get a [personal access token](https://www.are.na/settings/personal-access-tokens).
+
+### Claude Desktop local configuration
+
+Merge this entry into `claude_desktop_config.json`:
 
 ```json
 {
@@ -76,58 +147,11 @@ To run the server locally via stdio, clone the repo, run `yarn install && yarn g
 }
 ```
 
-> **Note:** You must use absolute paths for both `command` and `args`. Claude Desktop does not reliably resolve relative paths or respect `cwd`. Using `yarn dev` or bare `npx tsx` will not work — `yarn` writes to stdout, and `npx` without a cwd cannot find the script.
+Replace both paths with absolute paths to your checkout. Launch the script directly so package-manager output does not interfere with stdio. This local configuration is separate from Claude's account-level remote connectors; use the hosted connector for web and Cowork.
 
-### Claude Code
+For a local server in Codex, choose **STDIO** and use the same command, argument, and `ARENA_ACCESS_TOKEN` environment variable. Set the working directory to the absolute checkout path.
 
-```bash
-claude mcp add --transport http arena https://mcp.are.na/mcp
-```
-
-Authenticate via `/mcp` when prompted.
-
-### Codex Desktop
-
-In the Codex desktop app, open **Settings > MCP servers > Add custom MCP**.
-
-Use the hosted server with OAuth, the same as the Claude connector flow. Select **Streamable HTTP** and enter:
-
-- **Name**: `Are.na`
-- **URL**: `https://mcp.are.na/mcp`
-
-Leave environment variables and passthrough blank. Save the server, then click **Authenticate** from the MCP server settings when it appears. The server supports Dynamic Client Registration, so you do not need to create or paste an OAuth client ID or secret.
-
-If you need to run the server locally over stdio instead, clone the repo, run `yarn install && yarn generate`, then add a custom MCP with:
-
-- **Name**: `Are.na`
-- **Transport**: `STDIO`
-- **Command to launch**: `/path/to/arena/mcp/node_modules/.bin/tsx`
-- **Arguments**: `/path/to/arena/mcp/src/transports/stdio.ts`
-- **Environment variables**: `ARENA_ACCESS_TOKEN` = `YOUR_ARENA_TOKEN`
-- **Working directory**: `/path/to/arena/mcp`
-
-Use absolute paths for the command, argument, and working directory. The local stdio server uses a personal access token instead of OAuth; get one from [are.na/settings/personal-access-tokens](https://www.are.na/settings/personal-access-tokens).
-
-### Codex CLI
-
-Codex CLI stores MCP servers in `~/.codex/config.toml`. Add the hosted server:
-
-```toml
-[mcp_servers.arena]
-url = "https://mcp.are.na/mcp"
-```
-
-Then authenticate it:
-
-```bash
-codex mcp login arena
-```
-
-You can check the configured server from the Codex TUI with `/mcp`.
-
-### Cursor
-
-Add the server under **Settings > MCP Servers** with URL `https://mcp.are.na/mcp` and an `Authorization: Bearer YOUR_ARENA_TOKEN` header.
+Clients that support HTTP bearer headers can also use the hosted endpoint with `Authorization: Bearer YOUR_ARENA_TOKEN`. Use the client's credential settings; keep tokens out of shared configuration and install links.
 
 ## Development
 
@@ -229,3 +253,23 @@ Every tool advertises an `outputSchema` and returns successful results in the sa
 Generated output schemas preserve the OpenAPI success-response contracts and include the referenced components as local `$defs`. The two custom tools have explicit schemas. Responses are validated before being reported as successful; API errors retain `isError: true` and are not validated against a success schema. An output-validation failure can occur after a write has completed, so it should not trigger an automatic write retry.
 
 The server uses the MCP SDK's low-level tool handlers to publish JSON Schemas directly, with Zod for input parsing and a Workers-compatible JSON Schema validator for outputs.
+
+## Making installation easier (maintainers)
+
+The recommended product flow is: choose an app, install Are.na, and sign in. The hosted endpoint already implements OAuth discovery, dynamic client registration, and PKCE. A local package or desktop extension is not needed for that flow.
+
+Recommended next steps, in order:
+
+1. **Verify complete installs and improve authentication compatibility.** Test a fresh account connection, a read, an explicitly approved write, and reconnect in each supported app. Add CIMD support so clients can use their published OAuth identities; until then, keep DCR as the documented choice. Review scope handling and client validation before expanding distribution. The current authorization route defaults upstream access to `write` when no scope is supplied, while the token response defaults its reported scope to `read`; those defaults need to agree.
+2. **Add tool annotations before directory submission.** The tool registry currently publishes descriptions and input/output schemas, but no `readOnlyHint`, `destructiveHint`, or `openWorldHint`. Classify each tool by its actual behavior, including composite tools, and verify the advertised values. See [OpenAI's MCP review requirements](https://developers.openai.com/plugins/deploy/app-review).
+3. **Submit to the app directories.** These listings would let users find Are.na by name and install it without pasting a server URL. Prepare branding, support and privacy URLs, a reviewer account, and representative prompts. Submission and publication are separate from updating these docs:
+
+   | Directory       | Maintainer action                                                                                                                                                                                                                                                                                                |
+   | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | Claude          | Submit the hosted URL through the [directory submission portal](https://claude.ai/directory/manage/new). A single remote MCP connector is an accepted submission type; a bundle can add skills later. See [Anthropic's submission announcement](https://claude.com/resources/articles/build-plugins-for-claude). |
+   | ChatGPT / Codex | Package the remote MCP connection as a plugin, verify the publisher and domain, upload the ZIP, resolve scans, and submit for review. After approval, publish and use the resulting directory link. See [OpenAI's submission guide](https://developers.openai.com/plugins/deploy/submission).                    |
+   | Cursor          | The install link above is available now. For discovery in Cursor, package the MCP configuration as a plugin and [submit to its marketplace](https://cursor.com/marketplace/publish); see [Cursor's plugin guide](https://cursor.com/docs/plugins).                                                               |
+
+4. **Add a small public setup page.** Put the app choices, copyable endpoint, Cursor install link, and two starter prompts on an Are.na page. Replace manual setup with verified directory links as listings become available. Keep the advanced setup in this repository and link the page from Are.na settings.
+
+The quick starts are documentation-verified, not a record of completed app-by-app acceptance tests. On October 20, 2026, the hosted discovery endpoints returned metadata successfully and an unauthenticated MCP initialization returned the expected `401` OAuth challenge. Complete the sign-in and tool-call checks above before announcing broader compatibility.
