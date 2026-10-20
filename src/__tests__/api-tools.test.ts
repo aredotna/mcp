@@ -53,6 +53,16 @@ describe("current Are.na API tools", () => {
     ).toEqual([...operations, "searchAndConnect", "channelDigest"].sort());
   });
 
+  it("returns valid MCP text for successful empty API responses", async () => {
+    mockApi([new Response(null, { status: 204 })]);
+    const result = await rpc("tools/call", {
+      name: "deleteComment",
+      arguments: { id: 1 },
+    });
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toEqual([{ type: "text", text: "null" }]);
+  });
+
   it("connects v3 search results using type and skips non-connectable entities", async () => {
     const fetch = mockApi([
       {

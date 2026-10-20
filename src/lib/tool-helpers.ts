@@ -3,7 +3,7 @@ import { createArenaClient, type ArenaClient } from "../client";
 
 export function textResult(data: unknown): CallToolResult {
   return {
-    content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+    content: [{ type: "text", text: JSON.stringify(data, null, 2) ?? "null" }],
   };
 }
 
