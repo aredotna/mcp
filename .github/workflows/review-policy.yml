@@ -1,0 +1,41 @@
+name: Review policy
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+  workflow_run:
+    workflows: [PR review events]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: PR number (leave empty to recheck all open PRs)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: review-policy
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      # Always use trusted default-branch code, including for fork PRs.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - run: node --test .github/scripts/review-policy.test.cjs
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const { run } = require('./.github/scripts/review-policy.cjs');
+            await run({ github, context, core });
