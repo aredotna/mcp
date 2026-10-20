@@ -6,41 +6,6 @@ import {
   errorResult,
 } from "../../lib/tool-helpers";
 
-interface Block {
-  id: number;
-  class?: string;
-  title?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  user?: { slug?: string } | null;
-  connection?: { created_at?: string; user?: { slug?: string } } | null;
-}
-
-interface ChannelMeta {
-  id: number;
-  title: string;
-  slug: string;
-  visibility: string;
-  description?: { text?: string } | null;
-  created_at: string;
-  updated_at: string;
-  owner: { slug?: string; name?: string; class?: string };
-  counts: {
-    blocks: number;
-    channels: number;
-    contents: number;
-    collaborators: number;
-  };
-  collaborators?: Array<{ slug?: string; name?: string; class?: string }>;
-}
-
-interface PaginationMeta {
-  current_page: number;
-  total_pages: number;
-  total_count: number;
-  has_more_pages: boolean;
-}
-
 export function registerChannelDigest(server: McpServer): void {
   server.registerTool(
     "channelDigest",
@@ -64,12 +29,12 @@ export function registerChannelDigest(server: McpServer): void {
       return withArenaClient(extra, async (client) => {
         const { data: channel, error: channelError } = await client.GET(
           "/v3/channels/{id}",
-          { params: { path: { id: args.channel_id } } } as any,
+          { params: { path: { id: args.channel_id } } },
         );
 
         if (channelError) return errorResult(channelError);
 
-        const meta = channel as unknown as ChannelMeta;
+        const meta = channel!;
         const sampleSize = args.sample_size ?? 100;
 
         const { data: contentsData, error: contentsError } = await client.GET(
@@ -79,34 +44,30 @@ export function registerChannelDigest(server: McpServer): void {
               path: { id: args.channel_id },
               query: { per: sampleSize, sort: "created_at_desc" },
             },
-          } as any,
+          },
         );
 
         if (contentsError) return errorResult(contentsError);
 
-        const contents = contentsData as unknown as {
-          data?: Block[];
-          meta?: PaginationMeta;
-        };
-        const items = contents?.data ?? [];
+        const items = contentsData?.data ?? [];
 
         const typeCounts: Record<string, number> = {};
         const contributors = new Set<string>();
 
         for (const item of items) {
-          const cls = item.class ?? "Unknown";
-          typeCounts[cls] = (typeCounts[cls] ?? 0) + 1;
+          const type = item.type;
+          typeCounts[type] = (typeCounts[type] ?? 0) + 1;
 
-          const who = item.connection?.user?.slug ?? item.user?.slug;
+          const who = item.connection?.connected_by?.slug;
           if (who) contributors.add(who);
         }
 
         const recentItems = items.slice(0, 5).map((item) => ({
           id: item.id,
-          type: item.class,
+          type: item.type,
           title: item.title ?? undefined,
-          added: item.connection?.created_at ?? item.created_at,
-          added_by: item.connection?.user?.slug ?? item.user?.slug,
+          added: item.connection?.connected_at ?? item.created_at,
+          added_by: item.connection?.connected_by?.slug,
         }));
 
         const sampled = items.length;
@@ -119,20 +80,20 @@ export function registerChannelDigest(server: McpServer): void {
             title: meta.title,
             slug: meta.slug,
             visibility: meta.visibility,
-            description: meta.description?.text ?? null,
+            description: meta.description?.plain ?? null,
             created_at: meta.created_at,
             updated_at: meta.updated_at,
           },
           owner: {
             slug: meta.owner.slug,
             name: meta.owner.name,
-            type: meta.owner.class,
+            type: meta.owner.type,
           },
           counts: meta.counts,
           collaborators: meta.collaborators?.map((c) => ({
             slug: c.slug,
             name: c.name,
-            type: c.class,
+            type: c.type,
           })),
           type_breakdown: {
             ...(isSampled
