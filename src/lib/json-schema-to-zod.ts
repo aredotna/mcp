@@ -19,6 +19,8 @@ interface JsonSchema {
   maximum?: number;
   minItems?: number;
   maxItems?: number;
+  minLength?: number;
+  maxLength?: number;
   additionalProperties?: boolean | JsonSchema;
 }
 
@@ -79,11 +81,21 @@ export function jsonSchemaToZodString(
   const isNullable = types.includes("null");
   const primaryType = nonNullTypes[0];
 
+  if (nonNullTypes.length === 0 && isNullable) return "z.null()";
+  if (nonNullTypes.length > 1) {
+    const variants = nonNullTypes.map((type) =>
+      jsonSchemaToZodString({ ...schema, type }, options),
+    );
+    return `z.union([${variants.join(", ")}])${isNullable ? ".nullable()" : ""}`;
+  }
+
   let base: string;
 
   switch (primaryType) {
     case "string":
       base = "z.string()";
+      if (schema.minLength !== undefined) base += `.min(${schema.minLength})`;
+      if (schema.maxLength !== undefined) base += `.max(${schema.maxLength})`;
       break;
     case "integer":
       base = "z.number().int()";
@@ -120,12 +132,21 @@ export function jsonSchemaToZodString(
         );
         base = `z.object({ ${props.join(", ")} })`;
       } else {
-        base = "z.record(z.unknown())";
+        const valueSchema =
+          typeof schema.additionalProperties === "object"
+            ? jsonSchemaToZodString(schema.additionalProperties, options)
+            : "z.unknown()";
+        base = `z.record(${valueSchema})`;
       }
       break;
     }
     default:
       base = "z.unknown()";
+  }
+
+  if (primaryType === "integer" || primaryType === "number") {
+    if (schema.minimum !== undefined) base += `.min(${schema.minimum})`;
+    if (schema.maximum !== undefined) base += `.max(${schema.maximum})`;
   }
 
   if (isNullable) {

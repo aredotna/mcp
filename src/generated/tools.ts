@@ -68,7 +68,7 @@ export function registerGeneratedTools(server: McpServer): void {
             "Optional cover image URL to use as the visual preview for Link, Attachment, and Embed blocks (overrides the auto-generated screenshot/thumbnail). Ignored for Image and Text blocks.",
           ),
         metadata: z
-          .record(z.unknown())
+          .record(z.union([z.string().max(2000), z.number(), z.boolean()]))
           .optional()
           .describe("Custom key-value metadata to set on the new block."),
         channel_ids: z
@@ -97,7 +97,9 @@ export function registerGeneratedTools(server: McpServer): void {
                   "Position to insert at within this channel (1-indexed).",
                 ),
               metadata: z
-                .record(z.unknown())
+                .record(
+                  z.union([z.string().max(2000), z.number(), z.boolean()]),
+                )
                 .optional()
                 .describe("Connection metadata for this specific connection."),
             }),
@@ -178,7 +180,9 @@ export function registerGeneratedTools(server: McpServer): void {
                   "Optional cover image URL to use as the visual preview for Link, Attachment, and Embed blocks (overrides the auto-generated screenshot/thumbnail). Ignored for Image and Text blocks.",
                 ),
               metadata: z
-                .record(z.unknown())
+                .record(
+                  z.union([z.string().max(2000), z.number(), z.boolean()]),
+                )
                 .optional()
                 .describe("Custom key-value metadata to set on the new block."),
             }),
@@ -268,7 +272,9 @@ export function registerGeneratedTools(server: McpServer): void {
           .optional()
           .describe("Alt text for images (for Image blocks)"),
         metadata: z
-          .record(z.unknown())
+          .record(
+            z.union([z.string().max(2000), z.number(), z.boolean(), z.null()]),
+          )
           .optional()
           .describe(
             "Custom key-value metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n",
@@ -305,11 +311,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
         sort: z
@@ -354,11 +363,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
         sort: z
@@ -453,7 +465,7 @@ export function registerGeneratedTools(server: McpServer): void {
             "User or Group to own the channel. The authenticated user must be able to assign authorship\nto the owner: themselves, or a group they belong to. If not provided, the channel is owned\nby the authenticated user.\n",
           ),
         metadata: z
-          .record(z.unknown())
+          .record(z.union([z.string().max(2000), z.number(), z.boolean()]))
           .optional()
           .describe("Custom key-value metadata to set on the new channel."),
       },
@@ -528,7 +540,9 @@ export function registerGeneratedTools(server: McpServer): void {
             "User or Group to own the channel. The authenticated user must be able to assign authorship\nto the owner: themselves, or a group they belong to.\n",
           ),
         metadata: z
-          .record(z.unknown())
+          .record(
+            z.union([z.string().max(2000), z.number(), z.boolean(), z.null()]),
+          )
           .optional()
           .describe(
             "Custom key-value metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n",
@@ -615,7 +629,9 @@ export function registerGeneratedTools(server: McpServer): void {
                   "Position to insert at within this channel (1-indexed).",
                 ),
               metadata: z
-                .record(z.unknown())
+                .record(
+                  z.union([z.string().max(2000), z.number(), z.boolean()]),
+                )
                 .optional()
                 .describe("Connection metadata for this specific connection."),
             }),
@@ -674,7 +690,9 @@ export function registerGeneratedTools(server: McpServer): void {
       inputSchema: {
         id: z.number().int().describe("Resource ID"),
         metadata: z
-          .record(z.unknown())
+          .record(
+            z.union([z.string().max(2000), z.number(), z.boolean(), z.null()]),
+          )
           .optional()
           .describe(
             "Custom key-value metadata. Uses merge semantics: new keys are added,\nexisting keys are updated, keys set to null are removed.\n",
@@ -766,11 +784,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
         sort: z
@@ -822,11 +843,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
         sort: z
@@ -866,11 +890,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
         sort: z
@@ -925,6 +952,8 @@ export function registerGeneratedTools(server: McpServer): void {
         limit: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of feed items to return (max 100)"),
         next: z
@@ -967,6 +996,8 @@ export function registerGeneratedTools(server: McpServer): void {
         limit: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of feed items to return (max 100)"),
         next: z
@@ -1081,11 +1112,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
         sort: z
@@ -1140,11 +1174,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
         sort: z
@@ -1177,11 +1214,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
         sort: z
@@ -1223,11 +1263,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
         sort: z
@@ -1392,11 +1435,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
       },
@@ -1538,11 +1584,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
       },
@@ -1701,11 +1750,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
         sort: z
@@ -1760,11 +1812,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
         sort: z
@@ -1946,11 +2001,14 @@ export function registerGeneratedTools(server: McpServer): void {
         page: z
           .number()
           .int()
+          .min(1)
           .optional()
           .describe("Page number for pagination"),
         per: z
           .number()
           .int()
+          .min(1)
+          .max(100)
           .optional()
           .describe("Number of items per page (max 100)"),
       },
