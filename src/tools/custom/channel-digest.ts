@@ -1,17 +1,19 @@
+import { channelDigestOutput } from "./output-schemas";
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "../../lib/tool-registry";
 import {
   withArenaClient,
-  textResult,
+  successResult,
   errorResult,
 } from "../../lib/tool-helpers";
 
-export function registerChannelDigest(server: McpServer): void {
+export function registerChannelDigest(server: ToolRegistry): void {
   server.registerTool(
     "channelDigest",
     {
       description:
         "Get a structured summary of an Are.na channel including metadata, type breakdown, collaborators, and recent activity. Samples content rather than fetching everything, so it works efficiently on large channels.",
+      outputSchema: channelDigestOutput,
       inputSchema: {
         channel_id: z.string().describe("Channel ID or slug"),
         sample_size: z
@@ -74,7 +76,7 @@ export function registerChannelDigest(server: McpServer): void {
         const total = meta.counts.contents;
         const isSampled = total > sampled;
 
-        return textResult({
+        return successResult({
           channel: {
             id: meta.id,
             title: meta.title,
