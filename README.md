@@ -208,10 +208,24 @@ When the Are.na API spec changes:
 yarn generate
 ```
 
-This fetches the latest spec and regenerates TypeScript types and tool registrations. To regenerate from the checked-in spec without fetching it again:
+This fetches the latest spec and regenerates TypeScript types, tool registrations, and output schemas. To regenerate from the checked-in spec without fetching it again:
 
 ```bash
 yarn generate --offline
 ```
 
 The server uses `openapi-fetch` with generated types directly. Custom tools use the same generated response types as the endpoint tools.
+
+## Tool results
+
+Every tool advertises an `outputSchema` and returns successful results in the same shape in `structuredContent` and JSON text:
+
+```json
+{ "result": { "id": 123, "type": "Text" } }
+```
+
+`result` contains the complete API response (including `data` and `meta` for list endpoints), or `null` for an empty response. The example above is abbreviated. Text consumers should read the payload under `result`; earlier versions returned it directly.
+
+Generated output schemas preserve the OpenAPI success-response contracts and include the referenced components as local `$defs`. The two custom tools have explicit schemas. Responses are validated before being reported as successful; API errors retain `isError: true` and are not validated against a success schema. An output-validation failure can occur after a write has completed, so it should not trigger an automatic write retry.
+
+The server uses the MCP SDK's low-level tool handlers to publish JSON Schemas directly, with Zod for input parsing and a Workers-compatible JSON Schema validator for outputs.

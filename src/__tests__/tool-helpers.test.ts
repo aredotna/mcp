@@ -1,18 +1,21 @@
 import { describe, it, expect } from "vitest";
 import {
-  textResult,
+  successResult,
   errorResult,
   requireAuth,
   AuthRequiredError,
 } from "../lib/tool-helpers";
 
-describe("textResult", () => {
+describe("successResult", () => {
   it("wraps data as pretty-printed JSON text content", () => {
-    const result = textResult({ id: 1, title: "test" });
+    const result = successResult({ id: 1, title: "test" });
     expect(result.content).toHaveLength(1);
     expect(result.content[0]).toEqual({
       type: "text",
-      text: JSON.stringify({ id: 1, title: "test" }, null, 2),
+      text: JSON.stringify({ result: { id: 1, title: "test" } }, null, 2),
+    });
+    expect(result.structuredContent).toEqual({
+      result: { id: 1, title: "test" },
     });
     expect(result.isError).toBeUndefined();
   });

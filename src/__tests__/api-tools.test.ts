@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import app from "../transports/http";
+import { textBlock } from "./fixtures";
 import spec from "../generated/openapi.json";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -60,7 +61,9 @@ describe("current Are.na API tools", () => {
       arguments: { id: 1 },
     });
     expect(result.isError).toBeUndefined();
-    expect(result.content).toEqual([{ type: "text", text: "null" }]);
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify({ result: null }, null, 2) },
+    ]);
   });
 
   it("connects v3 search results using type and skips non-connectable entities", async () => {
@@ -80,7 +83,7 @@ describe("current Are.na API tools", () => {
       arguments: { query: "architecture", target_channel_id: "research" },
     });
     expect(result.isError).toBeUndefined();
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
+    expect(JSON.parse(result.content[0].text).result).toMatchObject({
       found: 3,
       connected: 2,
       skipped: [{ id: 3, type: "User" }],
@@ -153,7 +156,7 @@ describe("current Are.na API tools", () => {
       arguments: { channel_id: "research", sample_size: 2 },
     });
     expect(result.isError).toBeUndefined();
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
+    expect(JSON.parse(result.content[0].text).result).toMatchObject({
       channel: { description: "Plain description" },
       owner: { type: "Group" },
       collaborators: [{ type: "User" }],
@@ -171,7 +174,7 @@ describe("current Are.na API tools", () => {
   });
 
   it("forwards structured destinations, cover URLs, and scalar metadata", async () => {
-    const fetch = mockApi([{ id: 1, type: "Link" }]);
+    const fetch = mockApi([textBlock]);
     const args = {
       value: "https://example.com",
       cover_url: "https://example.com/cover.jpg",
@@ -190,7 +193,7 @@ describe("current Are.na API tools", () => {
   });
 
   it("preserves null metadata deletions", async () => {
-    const fetch = mockApi([{ id: 1 }]);
+    const fetch = mockApi([textBlock]);
     const result = await rpc("tools/call", {
       name: "updateBlock",
       arguments: { id: 1, metadata: { status: null } },

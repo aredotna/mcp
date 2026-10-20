@@ -1,8 +1,9 @@
+import { searchAndConnectOutput } from "./output-schemas";
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolRegistry } from "../../lib/tool-registry";
 import {
   withArenaClient,
-  textResult,
+  successResult,
   errorResult,
 } from "../../lib/tool-helpers";
 
@@ -15,12 +16,13 @@ const CONNECTABLE_TYPES = new Set([
   "Channel",
 ]);
 
-export function registerSearchAndConnect(server: McpServer): void {
+export function registerSearchAndConnect(server: ToolRegistry): void {
   server.registerTool(
     "searchAndConnect",
     {
       description:
         "Search Are.na and connect matching results to a target channel",
+      outputSchema: searchAndConnectOutput,
       inputSchema: {
         query: z.string().describe("Search query"),
         target_channel_id: z
@@ -98,7 +100,7 @@ export function registerSearchAndConnect(server: McpServer): void {
           }
         }
 
-        return textResult({
+        return successResult({
           query: args.query,
           target_channel: args.target_channel_id,
           found: items.length,

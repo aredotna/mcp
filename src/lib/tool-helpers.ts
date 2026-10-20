@@ -1,9 +1,12 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createArenaClient, type ArenaClient } from "../client";
 
-export function textResult(data: unknown): CallToolResult {
+export function successResult(data: unknown): CallToolResult {
+  const text = JSON.stringify({ result: data ?? null }, null, 2);
+  const structuredContent: Record<string, unknown> = JSON.parse(text);
   return {
-    content: [{ type: "text", text: JSON.stringify(data, null, 2) ?? "null" }],
+    content: [{ type: "text", text }],
+    structuredContent,
   };
 }
 
