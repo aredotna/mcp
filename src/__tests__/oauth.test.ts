@@ -7,6 +7,7 @@ const REDIRECT = "http://127.0.0.1:3000/callback";
 const VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 const CLAUDE = "https://claude.ai/oauth/mcp-oauth-client-metadata";
+const CLAUDE_CODE = "https://claude.ai/oauth/claude-code-client-metadata";
 const CHATGPT = "https://chatgpt.com/oauth/client.json";
 const CODEX = "https://chatgpt.com/oauth/codex/client.json";
 
@@ -29,6 +30,7 @@ function environment() {
     OAUTH_KV: kv,
     ARENA_OAUTH_CLIENT_ID: "arena-app-id",
     ARENA_OAUTH_CLIENT_SECRET: "arena-app-secret",
+    CLIENT_ID_METADATA_DOCUMENTS: "enabled" as string | undefined,
   };
 }
 
@@ -251,7 +253,6 @@ describe("client registration and token binding", () => {
     { redirect_uris: ["https://*.example/callback"] },
     { redirect_uris: ["http://public.example/callback"] },
     { client_name: {} },
-    { token_endpoint_auth_method: "client_secret_basic" },
     { grant_types: ["client_credentials"] },
     { response_types: ["token"] },
   ])("rejects malformed or unsupported metadata: %j", async (metadata) => {
@@ -283,6 +284,19 @@ describe("client registration and token binding", () => {
   ])("supports callback %s", async (redirect) => {
     await register({ redirect_uris: [redirect] });
   });
+
+  it.each([undefined, "client_secret_basic", "private_key_jwt"])(
+    "substitutes client_secret_post for requested method %s",
+    async (method) => {
+      const client = await register({ token_endpoint_auth_method: method });
+      expect(client).toMatchObject({
+        token_endpoint_auth_method: "client_secret_post",
+        client_secret: expect.any(String),
+      });
+      const { code } = await issueCode(client);
+      expect((await exchange(client, code)).status).toBe(200);
+    },
+  );
 
   it("honors public DCR clients without generating a secret", async () => {
     const client = await register({ token_endpoint_auth_method: "none" });
@@ -372,7 +386,7 @@ describe("browser consent and callbacks", () => {
     expect(page).not.toContain("<script>");
     expect(page).toContain("&lt;script&gt;");
     expect(page).toContain(REDIRECT);
-    expect(page).toContain(client.client_id);
+    expect(page).toContain("its name is not verified");
     expect(response.headers.get("Content-Security-Policy")).toContain(
       "frame-ancestors 'none'",
     );
@@ -635,6 +649,29 @@ describe("loopback callback matching", () => {
 });
 
 describe("published client identities", () => {
+  it("completes Claude Code sign-in with its published identity", async () => {
+    mockMetadata(
+      metadata(CLAUDE_CODE, {
+        client_name: "Claude Code",
+        client_uri: "https://claude.ai",
+        redirect_uris: [
+          "http://localhost/callback",
+          "http://127.0.0.1/callback",
+        ],
+      }),
+    );
+    const client = { client_id: CLAUDE_CODE };
+    const redirect = "http://localhost:50615/callback";
+    const { code, location } = await issueCode(client, { redirect });
+    expect(location.origin + location.pathname).toBe(redirect);
+    const response = await exchange(client, code, { redirect_uri: redirect });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      access_token: "arena-user-token",
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe(CLAUDE_CODE);
+  });
+
   it.each(["127.0.0.1", "localhost"])(
     "completes Codex sign-in on a temporary %s port",
     async (host) => {
@@ -707,27 +744,80 @@ describe("published client identities", () => {
     });
   });
 
-  it.each([
-    "https://127.0.0.1/client.json",
-    "https://metadata.google.internal/client.json",
-    "http://claude.ai/oauth/mcp-oauth-client-metadata",
-    "https://claude.ai.evil.example/oauth/mcp-oauth-client-metadata",
-    "https://claude.ai@evil.example/oauth/mcp-oauth-client-metadata",
-    "https://chatgpt.com:444/oauth/client.json",
-    "https://chatgpt.com/oauth/client.json?url=http://localhost",
-    "https://chatgpt.com/oauth/../client.json",
-    "https://chatgpt.com/oauth/client.json#fragment",
-  ])(
-    "rejects untrusted metadata URLs without fetching: %s",
-    async (clientId) => {
-      expect((await authorize({ client_id: clientId })).status).toBe(401);
+  it.each([undefined, "disabled"])(
+    "does not advertise or fetch client metadata when the setting is %s",
+    async (setting) => {
+      env.CLIENT_ID_METADATA_DOCUMENTS = setting;
+      expect(
+        await (await request("/.well-known/oauth-authorization-server")).json(),
+      ).toMatchObject({ client_id_metadata_document_supported: false });
+      expect(
+        (
+          await authorize(
+            { client_id: CLAUDE },
+            { redirect_uri: "https://claude.ai/api/mcp/auth_callback" },
+          )
+        ).status,
+      ).toBe(401);
+      expect((await exchange({ client_id: CLAUDE }, "code")).status).toBe(401);
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
 
+  it("completes sign-in for an unlisted app's published identity", async () => {
+    const vscode = "https://vscode.dev/oauth/client-metadata.json";
+    const redirect = "http://127.0.0.1:33418/";
+    const document = metadata(vscode, {
+      client_name: undefined,
+      redirect_uris: [redirect, "https://vscode.dev/redirect"],
+    });
+    const client = { client_id: vscode };
+    mockMetadata(document, { "Cache-Control": "no-store" });
+    const page = await (
+      await authorize(client, { redirect_uri: redirect })
+    ).text();
+    expect(page).toContain("<strong>vscode.dev</strong> is");
+    expect(page).toContain("Identity published by <strong>vscode.dev</strong>");
+    mockMetadata(document, { "Cache-Control": "no-store" });
+    const { code } = await issueCode(client, { redirect });
+    mockMetadata(document, { "Cache-Control": "no-store" });
+    expect(
+      (await exchange(client, code, { redirect_uri: redirect })).status,
+    ).toBe(200);
+  });
+
+  it.each([
+    "https://127.0.0.1/client.json",
+    "https://2130706433/client.json",
+    "https://[::1]/client.json",
+    "https://localhost/client.json",
+    "https://localhost./client.json",
+    "https://127.0.0.1./client.json",
+    "https://app.localhost/client.json",
+    "https://app.local./client.json",
+    "https://chatgpt.com./oauth/client.json",
+    "https://metadata/client.json",
+    "https://metadata.google.internal/client.json",
+    "https://printer.local/client.json",
+    "https://chatgpt.com/",
+    "https://chatgpt.com",
+    "http://claude.ai/oauth/mcp-oauth-client-metadata",
+    "https://claude.ai@evil.example/oauth/mcp-oauth-client-metadata",
+    "https://CLAUDE.ai/oauth/mcp-oauth-client-metadata",
+    "https://chatgpt.com:444/oauth/client.json",
+    "https://chatgpt.com:443/oauth/client.json",
+    "https://chatgpt.com/oauth/client.json?url=http://localhost",
+    "https://chatgpt.com/oauth/../client.json",
+    "https://chatgpt.com/oauth/%2e%2e/client.json",
+    "https://chatgpt.com/oauth/client.json#fragment",
+    `https://app.example/${"x".repeat(2048)}`,
+  ])("rejects invalid metadata URLs without fetching: %s", async (clientId) => {
+    expect((await authorize({ client_id: clientId })).status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it.each([
     { client_id: CHATGPT },
-    { client_name: undefined },
     { redirect_uris: [123] },
     { redirect_uris: ["javascript:alert(1)"] },
     { token_endpoint_auth_method: "private_key_jwt" },
@@ -800,7 +890,7 @@ describe("published client identities", () => {
       mockMetadata(metadata(CLAUDE, { redirect_uris: ["javascript:x"] }));
       expect((await authorize({ client_id: CLAUDE })).status).toBe(401);
       expect(
-        (await authorize({ client_id: "https://evil.example/client.json" }))
+        (await authorize({ client_id: "https://127.0.0.1/client.json" }))
           .status,
       ).toBe(401);
       expect(fetchMock).toHaveBeenCalledTimes(1);

@@ -1,15 +1,33 @@
 import { z } from "zod";
 import { OAuthStore, type OAuthClient } from "./store";
 
-// Trust only vendor-controlled metadata endpoints. Do not turn client_id into
-// an arbitrary server-side fetch (including through redirects or DNS aliases).
-export function isTrustedClientMetadataUrl(clientId: string): boolean {
-  return (
-    clientId === "https://claude.ai/oauth/mcp-oauth-client-metadata" ||
-    /^https:\/\/chatgpt\.com\/oauth\/(?:[A-Za-z0-9_-]+\/)?client\.json$/.test(
-      clientId,
-    )
-  );
+// Hostname text cannot reveal public names that resolve to private addresses.
+const LOCAL_SUFFIXES =
+  /(?:^|\.)(?:localhost|local|internal|arpa|test|invalid)$/;
+
+/** A client ID metadata document URL, per the CIMD draft's URL rules. */
+export function isClientMetadataUrl(clientId: string): boolean {
+  if (clientId.length > 2048) return false;
+  try {
+    const url = new URL(clientId);
+    // Requiring the canonical form rejects dot segments and other ambiguity.
+    return (
+      url.href === clientId &&
+      url.protocol === "https:" &&
+      url.pathname !== "/" &&
+      !url.username &&
+      !url.password &&
+      !url.port &&
+      !url.search &&
+      !url.hash &&
+      url.hostname.includes(".") &&
+      !url.hostname.endsWith(".") &&
+      !/^[\d.]+$|^\[/.test(url.hostname) &&
+      !LOCAL_SUFFIXES.test(url.hostname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 // Native apps may use private-use schemes (RFC 8252), e.g. cursor://.
@@ -71,15 +89,17 @@ const clientMetadata = z.object({
 });
 
 export const registrationMetadata = clientMetadata.extend({
-  // RFC 7591's client_secret_basic default is unsupported; issue a POST secret.
+  // RFC 7591 lets the server substitute a method; any unsupported request
+  // (including the client_secret_basic default) receives a POST secret.
   token_endpoint_auth_method: z
-    .enum(["none", "client_secret_post"])
-    .default("client_secret_post"),
+    .unknown()
+    .transform((method) =>
+      method === "none" ? "none" : ("client_secret_post" as const),
+    ),
 });
 
 const publishedMetadata = clientMetadata.extend({
   client_id: z.string(),
-  client_name: z.string().trim().min(1).max(200),
   token_endpoint_auth_method: z.string().optional(),
   token_endpoint_auth_methods_supported: z.array(z.string()).min(1).optional(),
 });
@@ -132,10 +152,11 @@ function cacheSeconds(headers: Headers): number {
 export async function resolveClient(
   clientId: string,
   store: OAuthStore,
+  metadataDocuments: boolean,
 ): Promise<OAuthClient | null> {
   // Generated DCR IDs are opaque hex strings, never URLs.
   if (/^[a-f0-9]{32}$/.test(clientId)) return store.getClient(clientId);
-  if (!isTrustedClientMetadataUrl(clientId)) return null;
+  if (!metadataDocuments || !isClientMetadataUrl(clientId)) return null;
 
   const cached = await store.getClientMetadata(clientId);
   if (cached) return cached;

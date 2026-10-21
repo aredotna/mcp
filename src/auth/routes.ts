@@ -20,6 +20,7 @@ interface OAuthEnv {
   OAUTH_KV: KVNamespace;
   ARENA_OAUTH_CLIENT_ID: string;
   ARENA_OAUTH_CLIENT_SECRET: string;
+  CLIENT_ID_METADATA_DOCUMENTS?: string;
 }
 
 type OAuthContext = Context<{ Bindings: OAuthEnv }>;
@@ -27,6 +28,12 @@ export const oauthRoutes = new Hono<{ Bindings: OAuthEnv }>();
 
 function origin(c: OAuthContext): string {
   return new URL(c.req.url).origin;
+}
+
+// Enabled only by the deploy script: Miniflare (`wrangler dev`) permits
+// private-network fetches, so local servers must not fetch client metadata.
+function metadataDocuments(c: OAuthContext): boolean {
+  return c.env.CLIENT_ID_METADATA_DOCUMENTS === "enabled";
 }
 
 // One cookie per flow, so concurrent sign-ins in a browser stay independent.
@@ -95,7 +102,7 @@ oauthRoutes.get("/.well-known/oauth-authorization-server", (c) =>
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["client_secret_post", "none"],
-    client_id_metadata_document_supported: true,
+    client_id_metadata_document_supported: metadataDocuments(c),
     authorization_response_iss_parameter_supported: true,
     scopes_supported: ["read", "write"],
   }),
@@ -182,7 +189,7 @@ oauthRoutes.get("/authorize", async (c) => {
     );
 
   const store = new OAuthStore(c.env.OAUTH_KV);
-  const client = await resolveClient(client_id, store);
+  const client = await resolveClient(client_id, store, metadataDocuments(c));
   if (!client)
     return c.json(
       {
@@ -392,7 +399,7 @@ oauthRoutes.post("/token", async (c) => {
   )
     return c.json({ error: "invalid_client" }, 401);
   const store = new OAuthStore(c.env.OAUTH_KV);
-  const client = await resolveClient(client_id, store);
+  const client = await resolveClient(client_id, store, metadataDocuments(c));
   if (!client) return c.json({ error: "invalid_client" }, 401);
   // Existing DCR records predate this field, but were issued a client secret.
   const method =

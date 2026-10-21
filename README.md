@@ -122,7 +122,7 @@ Then try a channel you know:
 
 - Use the full `https://mcp.are.na/mcp` URL, including `/mcp`, and select Streamable HTTP if asked for a transport.
 - If tools are missing, check that Are.na is connected and enabled in the chat. In ChatGPT, refresh the custom connection's metadata and start a new chat after server updates.
-- If sign-in fails with an unknown or invalid client, remove and re-add the connection so the app registers again. Published client identities (CIMD) are supported for Claude, ChatGPT, and Codex; other apps register automatically.
+- If sign-in fails with an unknown or invalid client, remove and re-add the connection so the app registers again.
 - If a workspace hides custom-server setup, its administrator needs to enable or provision the connection.
 
 ## Advanced: local server and access tokens
@@ -218,6 +218,8 @@ To deploy manually:
 yarn deploy
 ```
 
+Use `yarn deploy` rather than plain `wrangler deploy`, which leaves published client identities (CIMD) disabled.
+
 Requires `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (set as GitHub repo secrets for CI, or via `wrangler login` locally).
 
 ## Adding custom tools
@@ -260,8 +262,8 @@ The hosted server is an OAuth authorization server for MCP clients and delegates
 
 - **Scopes:** `read`, `write`, or both. Omitting `scope` requests `write`; unknown or empty scopes are rejected. The token response reports the scope Are.na granted, and the Are.na API enforces it.
 - **Consent:** Before Are.na sign-in, a consent screen shows the app, the requested access, and where the user will return. Consent and the callback must happen in the same browser. Redirects back to the app include the `iss` parameter.
-- **Dynamic client registration (DCR):** Clients register as public clients (`none`, with PKCE) or with `client_secret_post`, the default when no method is given. Redirect URIs must use HTTPS, loopback HTTP, or a private-use scheme such as `cursor://`. HTTP loopback callbacks may use a temporary port; the rest of the registered URI must match exactly. Token exchange verifies the client, its secret when one was issued, and PKCE. `redirect_uri` is optional at token exchange but must match the authorization request exactly, including its port, when supplied.
-- **Client ID metadata documents (CIMD):** Only Claude (`https://claude.ai/oauth/mcp-oauth-client-metadata`), ChatGPT (`https://chatgpt.com/oauth/client.json` and `https://chatgpt.com/oauth/{callback_id}/client.json`), and Codex (`https://chatgpt.com/oauth/codex/client.json`) are trusted; adding another requires a code change. A document must match its URL, list the callback, and support public-client authentication (`none`). Fetches time out after five seconds, are limited to 32 KiB, never follow redirects, and are cached only when the response allows, for at most five minutes.
+- **Dynamic client registration (DCR):** Clients register as public clients (`none`, with PKCE) or with `client_secret_post`, which is issued for any other requested method. Redirect URIs must use HTTPS, loopback HTTP, or a private-use scheme such as `cursor://`. HTTP loopback callbacks may use a temporary port; the rest of the registered URI must match exactly. Token exchange verifies the client, its secret when one was issued, and PKCE. `redirect_uri` is optional at token exchange but must match the authorization request exactly, including its port, when supplied.
+- **Client ID metadata documents (CIMD):** Apps such as Claude, Claude Code, ChatGPT, Codex, and VS Code identify themselves with an HTTPS URL to a metadata document they publish. The URL must be canonical, with a path and no query, fragment, credentials, port, IP address, or local hostname. The document must match its URL, list the callback, and support public-client authentication (`none`). The consent screen shows the domain that published the identity. Support is enabled only when `CLIENT_ID_METADATA_DOCUMENTS=enabled`, which `yarn deploy` sets. Local servers leave it off because `wrangler dev` can reach private networks, so local development requires apps that support dynamic registration. Fetches time out after five seconds, are limited to 32 KiB, never follow redirects, and are cached only when the response allows, for at most five minutes.
 
 Known limitations: authorization state and codes are stored in Workers KV, which is eventually consistent and has no atomic consume, so single-use codes are not guaranteed under concurrent redemption. Access tokens are Are.na tokens passed through to the client rather than separate MCP-audience tokens.
 
