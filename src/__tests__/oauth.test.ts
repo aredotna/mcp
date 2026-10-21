@@ -251,7 +251,6 @@ describe("client registration and token binding", () => {
     { redirect_uris: ["https://*.example/callback"] },
     { redirect_uris: ["http://public.example/callback"] },
     { client_name: {} },
-    { token_endpoint_auth_method: "client_secret_basic" },
     { grant_types: ["client_credentials"] },
     { response_types: ["token"] },
   ])("rejects malformed or unsupported metadata: %j", async (metadata) => {
@@ -283,6 +282,19 @@ describe("client registration and token binding", () => {
   ])("supports callback %s", async (redirect) => {
     await register({ redirect_uris: [redirect] });
   });
+
+  it.each([undefined, "client_secret_basic", "private_key_jwt"])(
+    "substitutes client_secret_post for requested method %s",
+    async (method) => {
+      const client = await register({ token_endpoint_auth_method: method });
+      expect(client).toMatchObject({
+        token_endpoint_auth_method: "client_secret_post",
+        client_secret: expect.any(String),
+      });
+      const { code } = await issueCode(client);
+      expect((await exchange(client, code)).status).toBe(200);
+    },
+  );
 
   it("honors public DCR clients without generating a secret", async () => {
     const client = await register({ token_endpoint_auth_method: "none" });

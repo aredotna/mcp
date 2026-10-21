@@ -71,10 +71,13 @@ const clientMetadata = z.object({
 });
 
 export const registrationMetadata = clientMetadata.extend({
-  // RFC 7591's client_secret_basic default is unsupported; issue a POST secret.
+  // RFC 7591 lets the server substitute a method; any unsupported request
+  // (including the client_secret_basic default) receives a POST secret.
   token_endpoint_auth_method: z
-    .enum(["none", "client_secret_post"])
-    .default("client_secret_post"),
+    .unknown()
+    .transform((method) =>
+      method === "none" ? "none" : ("client_secret_post" as const),
+    ),
 });
 
 const publishedMetadata = clientMetadata.extend({
