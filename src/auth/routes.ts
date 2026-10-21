@@ -5,7 +5,11 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import { OAuthStore, type AuthFlowState } from "./store";
 import { generateId, secretsEqual, verifyPkce } from "./crypto";
-import { registrationMetadata, resolveClient } from "./clients";
+import {
+  matchesRedirectUri,
+  registrationMetadata,
+  resolveClient,
+} from "./clients";
 import { normalizeScope } from "./scopes";
 import { consentPage } from "./consent";
 
@@ -187,7 +191,7 @@ oauthRoutes.get("/authorize", async (c) => {
       },
       401,
     );
-  if (!client.redirect_uris.includes(redirect_uri))
+  if (!matchesRedirectUri(redirect_uri, client.redirect_uris))
     return c.json(
       {
         error: "invalid_request",
@@ -412,7 +416,7 @@ oauthRoutes.post("/token", async (c) => {
     !entry ||
     entry.client_id !== client_id ||
     (redirect_uri !== undefined && entry.redirect_uri !== redirect_uri) ||
-    !client.redirect_uris.includes(entry.redirect_uri)
+    !matchesRedirectUri(entry.redirect_uri, client.redirect_uris)
   )
     return c.json({ error: "invalid_grant" }, 400);
   if (
