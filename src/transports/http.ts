@@ -11,6 +11,7 @@ interface Env {
   OAUTH_KV: KVNamespace;
   ARENA_OAUTH_CLIENT_ID: string;
   ARENA_OAUTH_CLIENT_SECRET: string;
+  CLIENT_ID_METADATA_DOCUMENTS?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();

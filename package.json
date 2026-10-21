@@ -8,7 +8,7 @@
     "build": "tsc",
     "dev": "tsx src/transports/stdio.ts",
     "dev:http": "wrangler dev src/transports/http.ts",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --var CLIENT_ID_METADATA_DOCUMENTS:enabled",
     "typecheck": "tsc --noEmit",
     "test": "node --test .github/scripts/review-policy.test.cjs && vitest run --exclude 'dist/**' --exclude '.github/**'",
     "format": "prettier --write .",

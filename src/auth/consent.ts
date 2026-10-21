@@ -7,6 +7,9 @@ export function consentPage(
   redirectUri: string,
   scope: string,
 ) {
+  const domain = client.client_id.startsWith("https://")
+    ? new URL(client.client_id).hostname
+    : undefined;
   return html`<!doctype html>
     <html lang="en">
       <head>
@@ -36,12 +39,17 @@ export function consentPage(
       <body>
         <h1>Connect to Are.na</h1>
         <p>
-          <strong>${client.client_name ?? "An app"}</strong> is requesting
+          <strong>${client.client_name ?? domain ?? "An app"}</strong> is
+          requesting
           ${scope.split(" ").includes("write")
             ? "permission to read and change your Are.na content"
             : "read access to your Are.na content"}.
         </p>
-        <p>App identity: <code>${client.client_id}</code></p>
+        <p>
+          ${domain
+            ? html`Identity published by <strong>${domain}</strong>.`
+            : "This app registered itself; its name is not verified."}
+        </p>
         <p>After signing in, you will return to <code>${redirectUri}</code>.</p>
         <form method="post" action="/authorize/consent">
           <input type="hidden" name="state" value="${state}" />
