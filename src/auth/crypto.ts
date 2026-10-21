@@ -3,6 +3,15 @@
  * available in Cloudflare Workers.
  */
 
+import { timingSafeEqual } from "node:crypto";
+
+export function secretsEqual(left: string, right: string): boolean {
+  const encoder = new TextEncoder();
+  const a = encoder.encode(left);
+  const b = encoder.encode(right);
+  return a.byteLength === b.byteLength && timingSafeEqual(a, b);
+}
+
 export function generateId(byteLength = 32): string {
   const bytes = new Uint8Array(byteLength);
   crypto.getRandomValues(bytes);
@@ -24,7 +33,7 @@ export async function verifyPkce(
   const data = encoder.encode(codeVerifier);
   const digest = await crypto.subtle.digest("SHA-256", data);
   const computed = base64UrlEncode(new Uint8Array(digest));
-  return computed === codeChallenge;
+  return secretsEqual(computed, codeChallenge);
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {
