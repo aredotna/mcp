@@ -27,11 +27,11 @@ Instructions checked against official documentation on **October 20, 2026**. App
 
 1. Open **Customize > Connectors**, then **+ Add > Add custom connector**.
 2. Enter **Are.na** and `https://mcp.are.na/mcp`, then continue.
-3. Review the detected OAuth settings. Choose **Sign in now** and, if shown, **Register automatically** under **OAuth client**.
-4. Finish adding the connector and sign in to Are.na. Select **Connect** if sign-in has not started.
+3. Review the detected OAuth settings. Choose **Sign in now** and, if shown, **Use Claude's published identity** under **OAuth client**. **Register automatically** is also supported.
+4. Finish adding the connector, review the app and permissions on the Are.na connection screen, then sign in to Are.na. Select **Connect** if sign-in has not started.
 5. Enable Are.na in the conversation's connectors menu.
 
-The server currently supports automatic registration (DCR), not **Use Claude's published identity**. In older dialogs with optional OAuth Client ID and Secret fields, leave both blank.
+The server supports Claude's published identity (CIMD) and automatic registration (DCR). In older dialogs with optional OAuth Client ID and Secret fields, leave both blank.
 
 On Team or Enterprise, an authorized administrator must add the connector under **Organization settings > Connectors** first; each member then connects their own Are.na account. Claude currently allows one custom connector on Free accounts.
 
@@ -41,7 +41,7 @@ On Team or Enterprise, an authorized administrator must add the connector under 
 
 1. Open [ChatGPT Plugins](https://chatgpt.com/plugins), select **+**, then **Add custom MCP server**.
 2. Name it **Are.na**. Suggested description: “Search Are.na, explore channels, and save and organize blocks.”
-3. Enter `https://mcp.are.na/mcp` as the public server URL and choose **OAuth**. Use dynamic client registration if a registration choice is shown; no client ID or secret needs to be supplied manually.
+3. Enter `https://mcp.are.na/mcp` as the public server URL and choose **OAuth**. Published client identity (CIMD) and dynamic registration (DCR) are supported; no client ID or secret needs to be supplied manually.
 4. Review the permissions and warning, then select **Create as a plugin**. Complete Are.na sign-in when prompted.
 5. Review the discovered tools and install the resulting plugin. In a new chat, type **@** and select **Are.na**.
 
@@ -122,7 +122,7 @@ Then try a channel you know:
 
 - Use the full `https://mcp.are.na/mcp` URL, including `/mcp`, and select Streamable HTTP if asked for a transport.
 - If tools are missing, check that Are.na is connected and enabled in the chat. In ChatGPT, refresh the custom connection's metadata and start a new chat after server updates.
-- If sign-in fails with an unknown client, choose automatic registration in Claude and reconnect. The current server does not support published client identities (CIMD).
+- If sign-in fails with an unknown or invalid client, remove and re-add the connection so the app registers again. Published client identities (CIMD) are supported for Claude and ChatGPT; other apps register automatically.
 - If a workspace hides custom-server setup, its administrator needs to enable or provision the connection.
 
 ## Advanced: local server and access tokens
@@ -254,13 +254,24 @@ Generated output schemas preserve the OpenAPI success-response contracts and inc
 
 The server uses the MCP SDK's low-level tool handlers to publish JSON Schemas directly, with Zod for input parsing and a Workers-compatible JSON Schema validator for outputs.
 
+## OAuth behavior
+
+The hosted server is an OAuth authorization server for MCP clients and delegates sign-in to Are.na.
+
+- **Scopes:** `read`, `write`, or both. Omitting `scope` requests `write`; unknown or empty scopes are rejected. The token response reports the scope Are.na granted, and the Are.na API enforces it.
+- **Consent:** Before Are.na sign-in, a consent screen shows the app, the requested access, and where the user will return. Consent and the callback must happen in the same browser. Redirects back to the app include the `iss` parameter.
+- **Dynamic client registration (DCR):** Clients register as public clients (`none`, with PKCE) or with `client_secret_post`, the default when no method is given. Redirect URIs must use HTTPS, loopback HTTP, or a private-use scheme such as `cursor://`. Token exchange verifies the client, its secret when one was issued, and PKCE. `redirect_uri` is optional at token exchange but must match exactly when supplied.
+- **Client ID metadata documents (CIMD):** Only Claude (`https://claude.ai/oauth/mcp-oauth-client-metadata`) and ChatGPT (`https://chatgpt.com/oauth/client.json` and `https://chatgpt.com/oauth/{callback_id}/client.json`) are trusted; adding another requires a code change. A document must match its URL, list the callback, and support public-client authentication (`none`). Fetches time out after five seconds, are limited to 32 KiB, never follow redirects, and are cached only when the response allows, for at most five minutes.
+
+Known limitations: authorization state and codes are stored in Workers KV, which is eventually consistent and has no atomic consume, so single-use codes are not guaranteed under concurrent redemption. Access tokens are Are.na tokens passed through to the client rather than separate MCP-audience tokens.
+
 ## Making installation easier (maintainers)
 
-The recommended product flow is: choose an app, install Are.na, and sign in. The hosted endpoint already implements OAuth discovery, dynamic client registration, and PKCE. A local package or desktop extension is not needed for that flow.
+The recommended product flow is: choose an app, install Are.na, and sign in. The hosted endpoint already implements OAuth discovery, client registration (DCR and CIMD), consent, and PKCE. A local package or desktop extension is not needed for that flow.
 
 Recommended next steps, in order:
 
-1. **Verify complete installs and improve authentication compatibility.** Test a fresh account connection, a read, an explicitly approved write, and reconnect in each supported app. Add CIMD support so clients can use their published OAuth identities; until then, keep DCR as the documented choice. Review scope handling and client validation before expanding distribution. The current authorization route defaults upstream access to `write` when no scope is supplied, while the token response defaults its reported scope to `read`; those defaults need to agree.
+1. **Verify complete installs.** Test a fresh account connection, consent, a read, an explicitly approved write, and reconnect in each supported app. See [OAuth behavior](#oauth-behavior).
 2. **Add tool annotations before directory submission.** The tool registry currently publishes descriptions and input/output schemas, but no `readOnlyHint`, `destructiveHint`, or `openWorldHint`. Classify each tool by its actual behavior, including composite tools, and verify the advertised values. See [OpenAI's MCP review requirements](https://developers.openai.com/plugins/deploy/app-review).
 3. **Submit to the app directories.** These listings would let users find Are.na by name and install it without pasting a server URL. Prepare branding, support and privacy URLs, a reviewer account, and representative prompts. Submission and publication are separate from updating these docs:
 
