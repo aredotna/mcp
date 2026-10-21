@@ -145,7 +145,8 @@ export async function resolveClient(
       created_at: Date.now(),
     };
     const ttl = cacheSeconds(response.headers);
-    if (ttl >= 60) await store.putClientMetadata(client, ttl);
+    // Caching is best effort; a failed write must not reject a valid client.
+    if (ttl >= 60) await store.putClientMetadata(client, ttl).catch(() => {});
     return client;
   } catch {
     // Unreachable, malformed, redirected, oversized, or timed-out documents

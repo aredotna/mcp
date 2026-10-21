@@ -695,6 +695,39 @@ describe("published client identities", () => {
     expect((await authorize({ client_id: CLAUDE })).status).toBe(401);
   });
 
+  describe("when the metadata cache write fails", () => {
+    beforeEach(() => {
+      const put = env.OAUTH_KV.put.getMockImplementation()!;
+      env.OAUTH_KV.put.mockImplementation(async (key, value) => {
+        if (key.startsWith("cimd:")) throw new Error("KV write limit");
+        return put(key, value);
+      });
+    });
+
+    it("still resolves valid metadata", async () => {
+      mockMetadata();
+      const client = { client_id: CLAUDE };
+      const { code } = await issueCode(client);
+      mockMetadata();
+      expect((await exchange(client, code)).status).toBe(200);
+      expect(env.OAUTH_KV.put).toHaveBeenCalledWith(
+        `cimd:${CLAUDE}`,
+        expect.any(String),
+        expect.anything(),
+      );
+    });
+
+    it("still rejects malformed and untrusted metadata", async () => {
+      mockMetadata(metadata(CLAUDE, { redirect_uris: ["javascript:x"] }));
+      expect((await authorize({ client_id: CLAUDE })).status).toBe(401);
+      expect(
+        (await authorize({ client_id: "https://evil.example/client.json" }))
+          .status,
+      ).toBe(401);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("refreshes expired metadata and honors removed redirect URIs", async () => {
     vi.useFakeTimers();
     mockMetadata();
