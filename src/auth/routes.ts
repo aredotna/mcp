@@ -1,15 +1,13 @@
-/**
- * OAuth 2.1 routes for MCP authorization.
- *
- * Implements the third-party authorization flow: this server acts as an
- * OAuth authorization server to MCP clients while delegating actual user
- * authentication to Are.na's existing OAuth.
- */
-
+/** OAuth authorization for MCP clients, backed by Are.na account sign-in. */
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { OAuthStore } from "./store";
-import { generateId, verifyPkce } from "./crypto";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { z } from "zod";
+import { OAuthStore, type AuthFlowState } from "./store";
+import { generateId, secretsEqual, verifyPkce } from "./crypto";
+import { registrationMetadata, resolveClient } from "./clients";
+import { normalizeScope } from "./scopes";
+import { consentPage } from "./consent";
 
 const ARENA_AUTHORIZE_URL = "https://www.are.na/oauth/authorize";
 const ARENA_TOKEN_URL = "https://api.are.na/v3/oauth/token";
@@ -20,14 +18,54 @@ interface OAuthEnv {
   ARENA_OAUTH_CLIENT_SECRET: string;
 }
 
+type OAuthContext = Context<{ Bindings: OAuthEnv }>;
 export const oauthRoutes = new Hono<{ Bindings: OAuthEnv }>();
 
-function protectedResourceMetadata(c: Context<{ Bindings: OAuthEnv }>) {
-  const origin = new URL(c.req.url).origin;
+function origin(c: OAuthContext): string {
+  return new URL(c.req.url).origin;
+}
 
+function consentCookie(c: OAuthContext): string {
+  return new URL(c.req.url).protocol === "https:"
+    ? "__Host-arena_mcp_consent"
+    : "arena_mcp_consent";
+}
+
+function browserMatches(c: OAuthContext, state: string): boolean {
+  const cookie = getCookie(c, consentCookie(c));
+  return !!cookie && secretsEqual(cookie, state);
+}
+
+function clientRedirect(
+  c: OAuthContext,
+  flow: AuthFlowState,
+  params: Record<string, string>,
+) {
+  const url = new URL(flow.redirect_uri);
+  for (const [name, value] of Object.entries(params))
+    url.searchParams.set(name, value);
+  url.searchParams.set("iss", origin(c));
+  if (flow.client_state !== undefined)
+    url.searchParams.set("state", flow.client_state);
+  deleteCookie(c, consentCookie(c), {
+    path: "/",
+    secure: new URL(c.req.url).protocol === "https:",
+  });
+  return c.redirect(url.toString());
+}
+
+// Auth codes, form tokens, and access tokens must not enter shared caches.
+oauthRoutes.use("*", async (c, next) => {
+  c.header("Cache-Control", "no-store");
+  c.header("Pragma", "no-cache");
+  c.header("Referrer-Policy", "no-referrer");
+  await next();
+});
+
+function protectedResourceMetadata(c: OAuthContext) {
   return c.json({
-    resource: `${origin}/mcp`,
-    authorization_servers: [origin],
+    resource: `${origin(c)}/mcp`,
+    authorization_servers: [origin(c)],
     bearer_methods_supported: ["header"],
     scopes_supported: ["read", "write"],
     resource_name: "Are.na MCP",
@@ -35,9 +73,6 @@ function protectedResourceMetadata(c: Context<{ Bindings: OAuthEnv }>) {
   });
 }
 
-/**
- * RFC 9728 — Protected Resource Metadata
- */
 oauthRoutes.get(
   "/.well-known/oauth-protected-resource",
   protectedResourceMetadata,
@@ -46,91 +81,63 @@ oauthRoutes.get(
   "/.well-known/oauth-protected-resource/mcp",
   protectedResourceMetadata,
 );
-
-/**
- * RFC 8414 — Authorization Server Metadata
- */
-oauthRoutes.get("/.well-known/oauth-authorization-server", (c) => {
-  const origin = new URL(c.req.url).origin;
-
-  return c.json({
-    issuer: origin,
-    authorization_endpoint: `${origin}/authorize`,
-    token_endpoint: `${origin}/token`,
-    registration_endpoint: `${origin}/register`,
+oauthRoutes.get("/.well-known/oauth-authorization-server", (c) =>
+  c.json({
+    issuer: origin(c),
+    authorization_endpoint: `${origin(c)}/authorize`,
+    token_endpoint: `${origin(c)}/token`,
+    registration_endpoint: `${origin(c)}/register`,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["client_secret_post", "none"],
+    client_id_metadata_document_supported: true,
+    authorization_response_iss_parameter_supported: true,
     scopes_supported: ["read", "write"],
-  });
-});
+  }),
+);
 
-/**
- * RFC 7591 — Dynamic Client Registration
- */
 oauthRoutes.post("/register", async (c) => {
-  const body = await c.req.json<{
-    redirect_uris?: string[];
-    client_name?: string;
-  }>();
-
-  if (
-    !body.redirect_uris ||
-    !Array.isArray(body.redirect_uris) ||
-    body.redirect_uris.length === 0
-  ) {
+  const parsed = registrationMetadata.safeParse(
+    await c.req.json().catch(() => null),
+  );
+  if (!parsed.success)
     return c.json(
       {
         error: "invalid_client_metadata",
-        error_description: "redirect_uris is required",
+        error_description:
+          "Provide valid redirect_uris and a supported client authentication method",
       },
       400,
     );
-  }
-
-  const store = new OAuthStore(c.env.OAUTH_KV);
-
-  const client_id = generateId(16);
-  const client_secret = generateId(32);
-
-  await store.putClient({
-    client_id,
-    client_secret,
-    redirect_uris: body.redirect_uris,
-    client_name: body.client_name,
+  const metadata = parsed.data;
+  const client = {
+    client_id: generateId(16),
+    ...(metadata.token_endpoint_auth_method === "client_secret_post"
+      ? { client_secret: generateId(32) }
+      : {}),
+    redirect_uris: metadata.redirect_uris,
+    client_name: metadata.client_name,
+    token_endpoint_auth_method: metadata.token_endpoint_auth_method,
     created_at: Date.now(),
-  });
-
-  return c.json(
-    {
-      client_id,
-      client_secret,
-      redirect_uris: body.redirect_uris,
-      client_name: body.client_name,
-      token_endpoint_auth_method: "client_secret_post",
-    },
-    201,
-  );
+  };
+  await new OAuthStore(c.env.OAUTH_KV).putClient(client);
+  const { created_at, ...registration } = client;
+  return c.json(registration, 201);
 });
 
-/**
- * Authorization endpoint — validates params, stores PKCE state,
- * then redirects the user to Are.na's OAuth consent page.
- */
 oauthRoutes.get("/authorize", async (c) => {
-  const params = c.req.query();
   const {
     client_id,
     redirect_uri,
     response_type,
     code_challenge,
     code_challenge_method,
-    state: clientState,
+    state,
     scope,
-  } = params;
-
-  if (response_type !== "code") {
+    resource,
+  } = c.req.query();
+  if (response_type !== "code")
     return c.json(
       {
         error: "unsupported_response_type",
@@ -138,9 +145,7 @@ oauthRoutes.get("/authorize", async (c) => {
       },
       400,
     );
-  }
-
-  if (!client_id || !redirect_uri || !code_challenge) {
+  if (!client_id || !redirect_uri || !code_challenge)
     return c.json(
       {
         error: "invalid_request",
@@ -149,29 +154,40 @@ oauthRoutes.get("/authorize", async (c) => {
       },
       400,
     );
-  }
-
-  if (code_challenge_method && code_challenge_method !== "S256") {
+  if (
+    code_challenge_method !== "S256" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(code_challenge)
+  )
     return c.json(
       {
         error: "invalid_request",
-        error_description: "Only S256 code_challenge_method is supported",
+        error_description: "A valid S256 code challenge is required",
       },
       400,
     );
-  }
+  if (resource !== undefined && resource !== `${origin(c)}/mcp`)
+    return c.json({ error: "invalid_target" }, 400);
+  const requestedScope = normalizeScope(scope);
+  if (requestedScope === null)
+    return c.json(
+      {
+        error: "invalid_scope",
+        error_description: "Supported scopes are read and write",
+      },
+      400,
+    );
 
   const store = new OAuthStore(c.env.OAUTH_KV);
-  const client = await store.getClient(client_id);
-
-  if (!client) {
+  const client = await resolveClient(client_id, store);
+  if (!client)
     return c.json(
-      { error: "invalid_client", error_description: "Unknown client_id" },
+      {
+        error: "invalid_client",
+        error_description: "Unknown or unsupported client identity",
+      },
       401,
     );
-  }
-
-  if (!client.redirect_uris.includes(redirect_uri)) {
+  if (!client.redirect_uris.includes(redirect_uri))
     return c.json(
       {
         error: "invalid_request",
@@ -179,130 +195,155 @@ oauthRoutes.get("/authorize", async (c) => {
       },
       400,
     );
-  }
 
-  // Generate a state token that ties this flow together.
-  // We encode the MCP client's state inside so we can return it on callback.
-  const arenaState = generateId(16);
-
-  await store.putAuthFlow(arenaState, {
+  const arenaState = generateId(32);
+  await store.putConsent(arenaState, {
     client_id,
     redirect_uri,
     code_challenge,
-    code_challenge_method: code_challenge_method ?? "S256",
-    scope,
+    code_challenge_method,
+    scope: requestedScope,
     arena_state: arenaState,
+    client_state: state,
   });
-
-  // Also store the MCP client's original `state` so we can forward it back
-  if (clientState) {
-    await c.env.OAUTH_KV.put(`client_state:${arenaState}`, clientState, {
-      expirationTtl: 600,
-    });
-  }
-
-  const origin = new URL(c.req.url).origin;
-  const arenaScope = scope === "read" ? "read" : "write";
-
-  const arenaParams = new URLSearchParams({
-    client_id: c.env.ARENA_OAUTH_CLIENT_ID,
-    redirect_uri: `${origin}/callback`,
-    response_type: "code",
-    state: arenaState,
-    scope: arenaScope,
+  setCookie(c, consentCookie(c), arenaState, {
+    path: "/",
+    httpOnly: true,
+    secure: new URL(c.req.url).protocol === "https:",
+    sameSite: "Lax",
+    maxAge: 600,
   });
-
-  return c.redirect(`${ARENA_AUTHORIZE_URL}?${arenaParams.toString()}`);
+  c.header(
+    "Content-Security-Policy",
+    "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
+  );
+  c.header("X-Frame-Options", "DENY");
+  // Under no-referrer, browsers send `Origin: null` with the consent form.
+  c.header("Referrer-Policy", "same-origin");
+  return c.html(consentPage(client, arenaState, redirect_uri, requestedScope));
 });
 
-/**
- * OAuth callback from Are.na — exchanges the Are.na auth code for an
- * access token, generates an MCP auth code, and redirects back to the
- * MCP client's redirect_uri.
- */
-oauthRoutes.get("/callback", async (c) => {
-  const { code: arenaCode, state: arenaState, error } = c.req.query();
-
-  if (error) {
-    return c.text(`Authorization denied: ${error}`, 400);
-  }
-
-  if (!arenaCode || !arenaState) {
-    return c.text("Missing code or state parameter", 400);
-  }
-
+oauthRoutes.post("/authorize/consent", async (c) => {
+  const body = await c.req.parseBody();
+  const state = body.state;
+  if (
+    typeof state !== "string" ||
+    !browserMatches(c, state) ||
+    c.req.header("Origin") !== origin(c)
+  )
+    return c.json(
+      {
+        error: "invalid_request",
+        error_description: "Invalid consent request; restart sign-in",
+      },
+      400,
+    );
+  if (body.decision !== "allow" && body.decision !== "deny")
+    return c.json({ error: "invalid_request" }, 400);
   const store = new OAuthStore(c.env.OAUTH_KV);
-  const flow = await store.getAuthFlow(arenaState);
-
-  if (!flow) {
-    return c.text("Invalid or expired authorization state", 400);
+  const flow = await store.getConsent(state);
+  if (!flow)
+    return c.json(
+      {
+        error: "invalid_request",
+        error_description: "Expired or already submitted consent",
+      },
+      400,
+    );
+  if (body.decision === "deny") {
+    await store.deleteConsent(state);
+    return clientRedirect(c, flow, { error: "access_denied" });
   }
-
-  // Exchange the Are.na auth code for an access token
-  const origin = new URL(c.req.url).origin;
-
-  const tokenRes = await fetch(ARENA_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "authorization_code",
-      client_id: c.env.ARENA_OAUTH_CLIENT_ID,
-      client_secret: c.env.ARENA_OAUTH_CLIENT_SECRET,
-      code: arenaCode,
-      redirect_uri: `${origin}/callback`,
-    }),
+  await store.putAuthFlow(state, flow);
+  await store.deleteConsent(state);
+  const params = new URLSearchParams({
+    client_id: c.env.ARENA_OAUTH_CLIENT_ID,
+    redirect_uri: `${origin(c)}/callback`,
+    response_type: "code",
+    state,
+    scope: flow.scope,
   });
+  return c.redirect(`${ARENA_AUTHORIZE_URL}?${params}`);
+});
 
-  if (!tokenRes.ok) {
-    const body = await tokenRes.text();
-    return c.text(`Failed to exchange code with Are.na: ${body}`, 502);
+const upstreamToken = z.object({
+  access_token: z.string().min(1),
+  scope: z.string().optional(),
+});
+
+oauthRoutes.get("/callback", async (c) => {
+  const { code, state, error } = c.req.query();
+  if (!state || !browserMatches(c, state))
+    return c.text("Invalid authorization state; restart sign-in", 400);
+  const store = new OAuthStore(c.env.OAUTH_KV);
+  const flow = await store.getAuthFlow(state);
+  if (!flow)
+    return c.text(
+      "Invalid or expired authorization state; restart sign-in",
+      400,
+    );
+  if (error) {
+    await store.deleteAuthFlow(state);
+    return clientRedirect(c, flow, { error: "access_denied" });
   }
+  if (!code) return c.text("Missing authorization code", 400);
 
-  const tokenData = (await tokenRes.json()) as { access_token: string };
-
-  // Generate an MCP authorization code mapped to the Are.na token
+  let token;
+  try {
+    const response = await fetch(ARENA_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "authorization_code",
+        client_id: c.env.ARENA_OAUTH_CLIENT_ID,
+        client_secret: c.env.ARENA_OAUTH_CLIENT_SECRET,
+        code,
+        redirect_uri: `${origin(c)}/callback`,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error("Upstream token exchange failed");
+    }
+    token = upstreamToken.parse(await response.json());
+  } catch {
+    await store.deleteAuthFlow(state);
+    return clientRedirect(c, flow, {
+      error: "server_error",
+      error_description: "Could not complete Are.na sign-in; please try again",
+    });
+  }
+  const grantedScope =
+    token.scope === undefined ? flow.scope : normalizeScope(token.scope);
+  if (
+    !grantedScope ||
+    grantedScope
+      .split(" ")
+      .some((scope) => !flow.scope.split(" ").includes(scope))
+  ) {
+    await store.deleteAuthFlow(state);
+    return clientRedirect(c, flow, {
+      error: "server_error",
+      error_description: "Are.na returned an unexpected scope",
+    });
+  }
   const mcpCode = generateId(32);
-
   await store.putAuthCode(mcpCode, {
-    arena_access_token: tokenData.access_token,
+    arena_access_token: token.access_token,
     client_id: flow.client_id,
     redirect_uri: flow.redirect_uri,
     code_challenge: flow.code_challenge,
     code_challenge_method: flow.code_challenge_method,
-    scope: flow.scope,
+    scope: grantedScope,
   });
-
-  // Clean up the flow state
-  await store.deleteAuthFlow(arenaState);
-
-  // Redirect back to the MCP client with the code
-  const clientState = await c.env.OAUTH_KV.get(`client_state:${arenaState}`);
-  if (clientState) {
-    await c.env.OAUTH_KV.delete(`client_state:${arenaState}`);
-  }
-
-  const redirectUrl = new URL(flow.redirect_uri);
-  redirectUrl.searchParams.set("code", mcpCode);
-  if (clientState) {
-    redirectUrl.searchParams.set("state", clientState);
-  }
-
-  return c.redirect(redirectUrl.toString());
+  await store.deleteAuthFlow(state);
+  return clientRedirect(c, flow, { code: mcpCode });
 });
 
-/**
- * Token endpoint — validates the MCP auth code + PKCE code_verifier,
- * then returns the Are.na access token as the MCP access token.
- */
 oauthRoutes.post("/token", async (c) => {
   const body = await c.req.parseBody();
-
-  const grant_type = body["grant_type"] as string;
-  const code = body["code"] as string;
-  const code_verifier = body["code_verifier"] as string;
-  const redirect_uri = body["redirect_uri"] as string;
-
-  if (grant_type !== "authorization_code") {
+  if (body.grant_type !== "authorization_code")
     return c.json(
       {
         error: "unsupported_grant_type",
@@ -310,59 +351,88 @@ oauthRoutes.post("/token", async (c) => {
       },
       400,
     );
-  }
-
-  if (!code || !code_verifier) {
+  const {
+    code,
+    code_verifier,
+    client_id,
+    redirect_uri,
+    client_secret,
+    resource,
+  } = body;
+  if (
+    typeof code !== "string" ||
+    !code ||
+    typeof code_verifier !== "string" ||
+    !/^[A-Za-z0-9._~-]{43,128}$/.test(code_verifier) ||
+    typeof client_id !== "string" ||
+    !client_id ||
+    (redirect_uri !== undefined &&
+      (typeof redirect_uri !== "string" || !redirect_uri))
+  )
     return c.json(
       {
         error: "invalid_request",
-        error_description: "code and code_verifier are required",
+        error_description:
+          "code, a valid code_verifier, and client_id are required",
       },
       400,
     );
-  }
-
+  if (resource !== undefined && resource !== `${origin(c)}/mcp`)
+    return c.json({ error: "invalid_target" }, 400);
+  // Only the advertised methods are accepted; never ignore an attempted Basic
+  // or JWT authentication and accidentally treat it as a public-client request.
+  if (
+    c.req.header("Authorization") ||
+    body.client_assertion !== undefined ||
+    body.client_assertion_type !== undefined
+  )
+    return c.json({ error: "invalid_client" }, 401);
   const store = new OAuthStore(c.env.OAUTH_KV);
+  const client = await resolveClient(client_id, store);
+  if (!client) return c.json({ error: "invalid_client" }, 401);
+  // Existing DCR records predate this field, but were issued a client secret.
+  const method =
+    client.token_endpoint_auth_method ??
+    (client.client_secret ? "client_secret_post" : "none");
+  if (method === "client_secret_post") {
+    if (
+      typeof client_secret !== "string" ||
+      !client.client_secret ||
+      !secretsEqual(client_secret, client.client_secret)
+    )
+      return c.json({ error: "invalid_client" }, 401);
+  } else if (client_secret !== undefined) {
+    return c.json({ error: "invalid_client" }, 401);
+  }
+
+  // OAuth 2.1 clients may omit redirect_uri at token exchange. When supplied
+  // by an OAuth 2.0 client, it must match the authorization request exactly.
   const entry = await store.getAuthCode(code);
-
-  if (!entry) {
-    return c.json(
-      {
-        error: "invalid_grant",
-        error_description: "Invalid or expired authorization code",
-      },
-      400,
-    );
-  }
-
-  if (redirect_uri && redirect_uri !== entry.redirect_uri) {
-    return c.json(
-      { error: "invalid_grant", error_description: "redirect_uri mismatch" },
-      400,
-    );
-  }
-
-  const valid = await verifyPkce(
-    code_verifier,
-    entry.code_challenge,
-    entry.code_challenge_method,
-  );
-
-  if (!valid) {
+  if (
+    !entry ||
+    entry.client_id !== client_id ||
+    (redirect_uri !== undefined && entry.redirect_uri !== redirect_uri) ||
+    !client.redirect_uris.includes(entry.redirect_uri)
+  )
+    return c.json({ error: "invalid_grant" }, 400);
+  if (
+    !(await verifyPkce(
+      code_verifier,
+      entry.code_challenge,
+      entry.code_challenge_method,
+    ))
+  )
     return c.json(
       { error: "invalid_grant", error_description: "PKCE verification failed" },
       400,
     );
-  }
-
-  // Consume the authorization code (single use)
+  // KV deletion prevents sequential replay. It is not an atomic redemption
+  // primitive across concurrent requests; that requires a coordinated store.
   await store.deleteAuthCode(code);
-
-  // Return the Are.na access token directly.
-  // Are.na tokens don't expire, so we omit expires_in and refresh_token.
   return c.json({
     access_token: entry.arena_access_token,
     token_type: "Bearer",
-    scope: entry.scope ?? "read",
+    // Codes stored without a scope were issued for write access.
+    scope: entry.scope ?? "write",
   });
 });

@@ -188,7 +188,7 @@ describe("Authorization endpoint", () => {
       client_id: clientId,
       redirect_uri: "http://localhost:3000/callback",
       response_type: "token",
-      code_challenge: "abc",
+      code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
       code_challenge_method: "S256",
     });
     const req = makeRequest("GET", `/authorize?${params}`);
@@ -203,7 +203,7 @@ describe("Authorization endpoint", () => {
       client_id: "nonexistent",
       redirect_uri: "http://localhost:3000/callback",
       response_type: "code",
-      code_challenge: "abc",
+      code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
       code_challenge_method: "S256",
     });
     const req = makeRequest("GET", `/authorize?${params}`);
@@ -211,7 +211,7 @@ describe("Authorization endpoint", () => {
     expect(res.status).toBe(401);
   });
 
-  it("redirects to Are.na OAuth on valid authorize request", async () => {
+  it("requests client consent on valid authorize request", async () => {
     const clientId = await getRegisteredClientId();
     const params = new URLSearchParams({
       client_id: clientId,
@@ -223,12 +223,8 @@ describe("Authorization endpoint", () => {
     });
     const req = makeRequest("GET", `/authorize?${params}`);
     const res = await app.fetch(req, env);
-    expect(res.status).toBe(302);
-
-    const location = res.headers.get("Location")!;
-    expect(location).toContain("www.are.na/oauth/authorize");
-    expect(location).toContain("client_id=test-arena-client-id");
-    expect(location).toContain("response_type=code");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Continue to Are.na");
   });
 });
 
@@ -250,7 +246,7 @@ describe("Token endpoint", () => {
     expect(data.error).toBe("unsupported_grant_type");
   });
 
-  it("rejects invalid authorization code", async () => {
+  it("rejects incomplete token exchange parameters", async () => {
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code: "invalid-code",
@@ -264,6 +260,6 @@ describe("Token endpoint", () => {
     const res = await app.fetch(req, makeEnv());
     expect(res.status).toBe(400);
     const data = (await res.json()) as { error: string };
-    expect(data.error).toBe("invalid_grant");
+    expect(data.error).toBe("invalid_request");
   });
 });
