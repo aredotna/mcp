@@ -8,6 +8,7 @@ const VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 const CLAUDE = "https://claude.ai/oauth/mcp-oauth-client-metadata";
 const CHATGPT = "https://chatgpt.com/oauth/client.json";
+const CODEX = "https://chatgpt.com/oauth/codex/client.json";
 
 function environment() {
   const data = new Map<string, string>();
@@ -131,7 +132,7 @@ async function issueCode(
   expect(location.searchParams.get("state")).toBe("original-client-state");
   const code = location.searchParams.get("code")!;
   expect(code).toBeTruthy();
-  return { code, flow };
+  return { code, flow, location };
 }
 function exchange(
   client: Client,
@@ -589,7 +590,85 @@ describe("concurrent sign-ins in one browser", () => {
   });
 });
 
+describe("loopback callback matching", () => {
+  it.each([
+    ["http://127.0.0.1:3000/callback", "http://127.0.0.1:58043/callback"],
+    ["http://localhost/callback", "http://localhost:58043/callback"],
+    ["http://[::1]/callback", "http://[::1]:58043/callback"],
+  ])("accepts a temporary port for %s", async (registered, redirect) => {
+    const client = await register({ redirect_uris: [registered] });
+    const { code } = await issueCode(client, { redirect });
+    expect(
+      (await exchange(client, code, { redirect_uri: redirect })).status,
+    ).toBe(200);
+  });
+
+  it.each([
+    ["http://127.0.0.1/callback", "http://127.0.0.1:58043/other"],
+    ["http://127.0.0.1/callback", "http://127.0.0.1:58043/other/../callback"],
+    ["http://127.0.0.1/callback", "http://127.0.0.1:58043/%63allback"],
+    ["http://127.0.0.1/callback", "http://127.0.0.1:58043/callback?extra=1"],
+    ["http://127.0.0.1/callback", "http://127.0.0.1:58043/callback#fragment"],
+    ["http://127.0.0.1/callback", "http://localhost:58043/callback"],
+    [
+      "http://127.0.0.1/callback",
+      "http://127.0.0.1.evil.example:58043/callback",
+    ],
+    ["http://127.0.0.1/callback", "http://user@127.0.0.1:58043/callback"],
+    ["http://127.0.0.1/callback", "http://127.0.0.1:99999/callback"],
+    ["http://127.0.0.1/callback", "https://127.0.0.1:58043/callback"],
+    ["https://app.example/callback", "https://app.example:58043/callback"],
+    ["https://127.0.0.1/callback", "https://127.0.0.1:58043/callback"],
+    ["cursor://app/callback", "cursor://app:58043/callback"],
+  ])(
+    "rejects an unregistered callback from %s to %s",
+    async (registered, redirect) => {
+      const client = await register({ redirect_uris: [registered] });
+      const response = await authorize(client, { redirect_uri: redirect });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: "invalid_request",
+        error_description: "redirect_uri not registered for this client",
+      });
+    },
+  );
+});
+
 describe("published client identities", () => {
+  it.each(["127.0.0.1", "localhost"])(
+    "completes Codex sign-in on a temporary %s port",
+    async (host) => {
+      mockMetadata(
+        metadata(CODEX, {
+          client_name: "Codex",
+          application_type: "native",
+          redirect_uris: [
+            "http://127.0.0.1/callback",
+            "http://localhost/callback",
+          ],
+        }),
+      );
+      const client = { client_id: CODEX };
+      const redirect = `http://${host}:58043/callback`;
+      const { code, location } = await issueCode(client, {
+        redirect,
+        scope: "read write",
+      });
+      expect(location.origin + location.pathname).toBe(redirect);
+      const wrongPort = await exchange(client, code, {
+        redirect_uri: `http://${host}:58044/callback`,
+      });
+      expect(wrongPort.status).toBe(400);
+      expect(await wrongPort.json()).toMatchObject({ error: "invalid_grant" });
+      const response = await exchange(client, code, { redirect_uri: redirect });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        access_token: "arena-user-token",
+        scope: "read write",
+      });
+    },
+  );
+
   it("advertises CIMD and issuer identification", async () => {
     expect(
       await (await request("/.well-known/oauth-authorization-server")).json(),

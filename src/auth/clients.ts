@@ -35,6 +35,25 @@ export function isValidRedirectUri(value: string): boolean {
   }
 }
 
+// RFC 8252 permits temporary HTTP loopback ports. Preserve every other byte
+// rather than normalizing paths, escaping, or hostnames through URL serialization.
+const LOOPBACK_AUTHORITY =
+  /^(http:\/\/(?:127\.0\.0\.1|localhost|\[::1\]))(?::\d+)?(?=\/|\?|$)/;
+
+export function matchesRedirectUri(
+  redirectUri: string,
+  registeredUris: string[],
+): boolean {
+  if (registeredUris.includes(redirectUri)) return true;
+  if (!isValidRedirectUri(redirectUri) || !LOOPBACK_AUTHORITY.test(redirectUri))
+    return false;
+  const withoutPort = redirectUri.replace(LOOPBACK_AUTHORITY, "$1");
+  return registeredUris.some(
+    (registered) =>
+      registered.replace(LOOPBACK_AUTHORITY, "$1") === withoutPort,
+  );
+}
+
 const clientMetadata = z.object({
   redirect_uris: z
     .array(z.string().max(2048).refine(isValidRedirectUri))
