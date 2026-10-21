@@ -474,6 +474,121 @@ describe("browser consent and callbacks", () => {
   });
 });
 
+describe("concurrent sign-ins in one browser", () => {
+  function browser() {
+    const cookies = new Map<string, string>();
+    return {
+      cookies,
+      header: (names = [...cookies.keys()]) =>
+        names.map((name) => `${name}=${cookies.get(name)}`).join("; "),
+      save(response: Response) {
+        const cookie = response.headers.get("Set-Cookie");
+        if (cookie) {
+          const [pair] = cookie.split(";");
+          const name = pair.slice(0, pair.indexOf("="));
+          if (/max-age=0/i.test(cookie)) cookies.delete(name);
+          else cookies.set(name, pair.slice(name.length + 1));
+        }
+        return response;
+      },
+    };
+  }
+  type Browser = ReturnType<typeof browser>;
+
+  async function start(jar: Browser, client: Client, clientState: string) {
+    const response = jar.save(await authorize(client, { state: clientState }));
+    expect(response.status).toBe(200);
+    return /name="state" value="([a-f0-9]+)"/.exec(await response.text())![1];
+  }
+  async function decide(
+    jar: Browser,
+    state: string,
+    decision: string,
+    headers: Record<string, string> = {},
+  ) {
+    return jar.save(
+      await post(
+        "/authorize/consent",
+        { state, decision },
+        { Cookie: jar.header(), Origin: ORIGIN, ...headers },
+      ),
+    );
+  }
+  async function complete(jar: Browser, client: Client, state: string) {
+    fetchMock.mockResolvedValueOnce(
+      Response.json({ access_token: `token-${state}` }),
+    );
+    const response = jar.save(
+      await request(`/callback?code=upstream&state=${state}`, {
+        headers: { Cookie: jar.header() },
+      }),
+    );
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("Location")!);
+    const exchanged = await exchange(
+      client,
+      location.searchParams.get("code")!,
+    );
+    expect(await exchanged.json()).toMatchObject({
+      access_token: `token-${state}`,
+    });
+    return location.searchParams.get("state");
+  }
+
+  it("completes two interleaved flows", async () => {
+    const jar = browser();
+    const client = await register();
+    const first = await start(jar, client, "first");
+    const second = await start(jar, client, "second");
+    expect(jar.cookies.size).toBe(2);
+    expect((await decide(jar, first, "allow")).status).toBe(302);
+    expect((await decide(jar, second, "allow")).status).toBe(302);
+    expect(await complete(jar, client, first)).toBe("first");
+    expect(await complete(jar, client, second)).toBe("second");
+    expect(jar.cookies.size).toBe(0);
+  });
+
+  it("keeps one flow working after another is cancelled", async () => {
+    const jar = browser();
+    const client = await register();
+    const cancelled = await start(jar, client, "cancelled");
+    const kept = await start(jar, client, "kept");
+    const denied = await decide(jar, cancelled, "deny");
+    expect(
+      new URL(denied.headers.get("Location")!).searchParams.get("error"),
+    ).toBe("access_denied");
+    expect(jar.cookies.size).toBe(1);
+    expect((await decide(jar, kept, "allow")).status).toBe(302);
+    expect(await complete(jar, client, kept)).toBe("kept");
+  });
+
+  it("rejects another flow's cookie and cross-origin submissions", async () => {
+    const jar = browser();
+    const client = await register();
+    const first = await start(jar, client, "first");
+    const second = await start(jar, client, "second");
+    const [firstCookie, secondCookie] = [...jar.cookies.keys()];
+    const firstSwapped = `${firstCookie}=${jar.cookies.get(secondCookie)}`;
+    for (const Cookie of [jar.header([secondCookie]), firstSwapped])
+      expect((await decide(jar, first, "allow", { Cookie })).status).toBe(400);
+    expect(
+      (await decide(jar, first, "allow", { Origin: "https://evil.example" }))
+        .status,
+    ).toBe(400);
+    expect((await decide(jar, second, "allow")).status).toBe(302);
+    expect(
+      (
+        await request(`/callback?code=upstream&state=${second}`, {
+          headers: { Cookie: jar.header([firstCookie]) },
+        })
+      ).status,
+    ).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await decide(jar, first, "allow")).status).toBe(302);
+    expect(await complete(jar, client, second)).toBe("second");
+  });
+});
+
 describe("published client identities", () => {
   it("advertises CIMD and issuer identification", async () => {
     expect(

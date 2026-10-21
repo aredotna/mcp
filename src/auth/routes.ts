@@ -25,14 +25,14 @@ function origin(c: OAuthContext): string {
   return new URL(c.req.url).origin;
 }
 
-function consentCookie(c: OAuthContext): string {
-  return new URL(c.req.url).protocol === "https:"
-    ? "__Host-arena_mcp_consent"
-    : "arena_mcp_consent";
+// One cookie per flow, so concurrent sign-ins in a browser stay independent.
+function consentCookie(c: OAuthContext, state: string): string {
+  const name = `arena_mcp_consent_${state}`;
+  return new URL(c.req.url).protocol === "https:" ? `__Host-${name}` : name;
 }
 
 function browserMatches(c: OAuthContext, state: string): boolean {
-  const cookie = getCookie(c, consentCookie(c));
+  const cookie = getCookie(c, consentCookie(c, state));
   return !!cookie && secretsEqual(cookie, state);
 }
 
@@ -47,7 +47,7 @@ function clientRedirect(
   url.searchParams.set("iss", origin(c));
   if (flow.client_state !== undefined)
     url.searchParams.set("state", flow.client_state);
-  deleteCookie(c, consentCookie(c), {
+  deleteCookie(c, consentCookie(c, flow.arena_state), {
     path: "/",
     secure: new URL(c.req.url).protocol === "https:",
   });
@@ -206,7 +206,7 @@ oauthRoutes.get("/authorize", async (c) => {
     arena_state: arenaState,
     client_state: state,
   });
-  setCookie(c, consentCookie(c), arenaState, {
+  setCookie(c, consentCookie(c, arenaState), arenaState, {
     path: "/",
     httpOnly: true,
     secure: new URL(c.req.url).protocol === "https:",
