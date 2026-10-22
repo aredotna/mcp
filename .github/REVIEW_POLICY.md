@@ -1,12 +1,12 @@
 # Pull request review policy
 
-The required `External contributor review` status passes automatically when GitHub identifies the PR author as an organization member or owner. Other authors, including outside collaborators, need one approval from someone with write access. Self-approval does not count, dismissed approvals stop counting, and outstanding changes requested by a reviewer with write access block the check.
+The required `External contributor review` status passes automatically when the PR author is an organization member or owner. Other authors, including outside collaborators, need one approval from someone with write access. Self-approvals don't count, dismissed approvals stop counting, and outstanding change requests from reviewers with write access block the check.
 
-Approvals remain valid after new commits, matching the repository's existing review policy. CI remains a separate required check.
+Approvals stay valid after new commits. CI is a separate required check.
 
-`Review policy` evaluates PR openings and updates using code from the default branch. `PR review events` signals review submissions, edits, and dismissals; the privileged evaluator then reads fresh PR and review data from GitHub. It does not execute PR code or use artifacts from the signal workflow. Failed API requests produce an error status.
+The `Review policy` workflow runs on PR openings and updates using code from the default branch. The `PR review events` workflow signals review submissions, edits, and dismissals, and the evaluator then reads fresh PR and review data from GitHub. It never runs PR code or uses artifacts from the signal workflow. Failed API requests produce an error status.
 
-To recheck after changing organization membership or repository permissions, run **Actions → Review policy → Run workflow**. Leave the PR number empty to recheck every open PR. Existing open PRs also need a recheck when this policy is first installed.
+To recheck after changing organization membership or repository permissions, run **Actions → Review policy → Run workflow**. Leave the PR number empty to recheck every open PR.
 
 Run the policy tests with:
 
